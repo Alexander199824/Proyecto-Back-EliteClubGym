@@ -1,5 +1,5 @@
 // Archivo: src/models/Notification.js
-// creo el modelo para gestionar todas las notificaciones del sistema
+// CORREGIDO: Modelo para gestionar todas las notificaciones del sistema
 
 const { DataTypes } = require('sequelize');
 const { sequelize } = require('../config/database');
@@ -338,17 +338,19 @@ Notification.beforeCreate(async (notification) => {
   // Si no se especificaron canales, obtener preferencias del cliente
   if (!notification.channels || notification.channels.length === 0) {
     const ClientPreferences = sequelize.models.ClientPreferences;
-    const preferences = await ClientPreferences.findOne({
-      where: { client_id: notification.client_id }
-    });
-    
-    if (preferences) {
-      const channels = [];
-      if (preferences.email_notifications) channels.push('email');
-      if (preferences.whatsapp_notifications) channels.push('whatsapp');
-      if (preferences.push_notifications) channels.push('push');
+    if (ClientPreferences) {
+      const preferences = await ClientPreferences.findOne({
+        where: { client_id: notification.client_id }
+      });
       
-      notification.channels = channels.length > 0 ? channels : ['push'];
+      if (preferences) {
+        const channels = [];
+        if (preferences.email_notifications) channels.push('email');
+        if (preferences.whatsapp_notifications) channels.push('whatsapp');
+        if (preferences.push_notifications) channels.push('push');
+        
+        notification.channels = channels.length > 0 ? channels : ['push'];
+      }
     }
   }
   
@@ -364,6 +366,8 @@ Notification.beforeCreate(async (notification) => {
 // Método de instancia para verificar preferencias por tipo
 Notification.prototype.checkTypePreferences = async function() {
   const ClientPreferences = sequelize.models.ClientPreferences;
+  if (!ClientPreferences) return;
+  
   const preferences = await ClientPreferences.findOne({
     where: { client_id: this.client_id }
   });
@@ -603,20 +607,24 @@ Notification.createFromTemplate = async function(templateId, clientId, variables
   return notification;
 };
 
-// Definir asociaciones
+// CORREGIDO: Asociaciones protegidas con verificación de existencia
 Notification.associate = function(models) {
   // Una notificación pertenece a un cliente
-  Notification.belongsTo(models.Client, {
-    foreignKey: 'client_id',
-    as: 'client',
-    onDelete: 'CASCADE'
-  });
+  if (models.Client) {
+    Notification.belongsTo(models.Client, {
+      foreignKey: 'client_id',
+      as: 'client',
+      onDelete: 'CASCADE'
+    });
+  }
   
   // Una notificación puede ser creada por un usuario
-  Notification.belongsTo(models.User, {
-    foreignKey: 'created_by_user_id',
-    as: 'createdBy'
-  });
+  if (models.User) {
+    Notification.belongsTo(models.User, {
+      foreignKey: 'created_by_user_id',
+      as: 'createdBy'
+    });
+  }
 };
 
 module.exports = Notification;

@@ -1,5 +1,5 @@
 // Archivo: src/models/ClientCheckin.js
-// creo el modelo para registrar check-ins manuales de clientes con validación GPS
+// CORREGIDO: Modelo para registrar check-ins manuales de clientes con validación GPS
 
 const { DataTypes } = require('sequelize');
 const { sequelize } = require('../config/database');
@@ -557,34 +557,42 @@ ClientCheckin.getClientAttendancePattern = function(clientId, days = 30) {
   });
 };
 
-// Definir asociaciones
+// CORREGIDO: Asociaciones protegidas con verificación de existencia
 ClientCheckin.associate = function(models) {
   // Un check-in pertenece a un cliente
-  ClientCheckin.belongsTo(models.Client, {
-    foreignKey: 'client_id',
-    as: 'client',
-    onDelete: 'CASCADE'
-  });
+  if (models.Client) {
+    ClientCheckin.belongsTo(models.Client, {
+      foreignKey: 'client_id',
+      as: 'client',
+      onDelete: 'CASCADE'
+    });
+  }
   
   // Un check-in puede estar relacionado con una membresía
-  ClientCheckin.belongsTo(models.ClientMembership, {
-    foreignKey: 'membership_id',
-    as: 'membership',
-    onDelete: 'SET NULL'
-  });
+  if (models.ClientMembership) {
+    ClientCheckin.belongsTo(models.ClientMembership, {
+      foreignKey: 'membership_id',
+      as: 'membership',
+      onDelete: 'SET NULL'
+    });
+  }
   
   // Un check-in puede estar relacionado con un código QR de recordatorio
-  ClientCheckin.belongsTo(models.QRCode, {
-    foreignKey: 'qr_code_id',
-    as: 'qrCode',
-    onDelete: 'SET NULL'
-  });
+  if (models.QRCode) {
+    ClientCheckin.belongsTo(models.QRCode, {
+      foreignKey: 'qr_code_id',
+      as: 'qrCode',
+      onDelete: 'SET NULL'
+    });
+  }
   
   // Un check-in puede ser validado por un usuario
-  ClientCheckin.belongsTo(models.User, {
-    foreignKey: 'validated_by_user_id',
-    as: 'validatedBy'
-  });
+  if (models.User) {
+    ClientCheckin.belongsTo(models.User, {
+      foreignKey: 'validated_by_user_id',
+      as: 'validatedBy'
+    });
+  }
 };
 
 module.exports = ClientCheckin;

@@ -1,5 +1,5 @@
 // Archivo: src/models/Order.js
-// creo el modelo para las órdenes de compra con modalidades de entrega
+// CORREGIDO: Modelo para las órdenes de compra con modalidades de entrega
 
 const { DataTypes } = require('sequelize');
 const { sequelize } = require('../config/database');
@@ -24,7 +24,7 @@ const Order = sequelize.define('Order', {
   order_number: {
     type: DataTypes.STRING(50),
     allowNull: false,
-    unique: true,
+    // CORREGIDO: Removido unique: true de aquí
     comment: 'Número único de la orden para tracking'
   },
   status: {
@@ -141,7 +141,7 @@ const Order = sequelize.define('Order', {
   tracking_number: {
     type: DataTypes.STRING(100),
     allowNull: true,
-    unique: true,
+    // CORREGIDO: Removido unique: true de aquí
     comment: 'Número de seguimiento para envíos'
   },
   carrier_name: {
@@ -269,9 +269,19 @@ const Order = sequelize.define('Order', {
   timestamps: true,
   paranoid: true, // Soft delete
   indexes: [
+    // CORREGIDO: Movido unique constraints a indexes
     {
       unique: true,
       fields: ['order_number']
+    },
+    {
+      unique: true,
+      fields: ['tracking_number'],
+      where: {
+        tracking_number: {
+          [sequelize.Sequelize.Op.ne]: null
+        }
+      }
     },
     {
       fields: ['client_id']
@@ -290,15 +300,6 @@ const Order = sequelize.define('Order', {
     },
     {
       fields: ['estimated_delivery_date']
-    },
-    {
-      fields: ['tracking_number'],
-      unique: true,
-      where: {
-        tracking_number: {
-          [sequelize.Sequelize.Op.ne]: null
-        }
-      }
     },
     {
       fields: ['processed_by_user_id']
@@ -484,7 +485,7 @@ Order.prototype.sendStatusNotification = async function(reason = null) {
     client_id: this.client_id,
     title: `Orden ${this.order_number}`,
     message: message,
-    type: 'order_update',
+    type: 'order',
     related_id: this.id,
     priority: 'medium'
   });
@@ -552,32 +553,40 @@ Order.findRequiringAttention = function() {
   });
 };
 
-// Definir asociaciones
+// CORREGIDO: Asociaciones protegidas con verificación de existencia
 Order.associate = function(models) {
   // Una orden pertenece a un cliente
-  Order.belongsTo(models.Client, {
-    foreignKey: 'client_id',
-    as: 'client',
-    onDelete: 'CASCADE'
-  });
+  if (models.Client) {
+    Order.belongsTo(models.Client, {
+      foreignKey: 'client_id',
+      as: 'client',
+      onDelete: 'CASCADE'
+    });
+  }
   
   // Una orden tiene muchos items
-  Order.hasMany(models.OrderItem, {
-    foreignKey: 'order_id',
-    as: 'orderItems'
-  });
+  if (models.OrderItem) {
+    Order.hasMany(models.OrderItem, {
+      foreignKey: 'order_id',
+      as: 'orderItems'
+    });
+  }
   
   // Una orden puede tener muchos pagos
-  Order.hasMany(models.Payment, {
-    foreignKey: 'order_id',
-    as: 'payments'
-  });
+  if (models.Payment) {
+    Order.hasMany(models.Payment, {
+      foreignKey: 'order_id',
+      as: 'payments'
+    });
+  }
   
   // Una orden fue procesada por un usuario
-  Order.belongsTo(models.User, {
-    foreignKey: 'processed_by_user_id',
-    as: 'processedBy'
-  });
+  if (models.User) {
+    Order.belongsTo(models.User, {
+      foreignKey: 'processed_by_user_id',
+      as: 'processedBy'
+    });
+  }
 };
 
 module.exports = Order;
