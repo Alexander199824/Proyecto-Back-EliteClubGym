@@ -354,7 +354,7 @@ Prize.prototype.isAvailable = function() {
   return { available: true };
 };
 
-// Método de instancia para verificar límites diarios/semanales
+// CORREGIDO: Método de instancia para verificar límites diarios/semanales
 Prize.prototype.checkLimits = async function() {
   const now = new Date();
   
@@ -400,19 +400,26 @@ Prize.prototype.checkLimits = async function() {
   return { available: true };
 };
 
-// Método de instancia para verificar elegibilidad del cliente
+// CORREGIDO: Método de instancia para verificar elegibilidad del cliente
 Prize.prototype.checkClientEligibility = async function(clientId) {
   if (!sequelize.models.Client) {
     return { eligible: false, reason: 'Modelo Cliente no disponible' };
   }
 
-  const client = await sequelize.models.Client.findByPk(clientId, {
-    include: sequelize.models.ClientMembership ? [{
+  // CORREGIDO: Construir includes dinámicamente
+  const includeOptions = [];
+  
+  if (sequelize.models.ClientMembership) {
+    includeOptions.push({
       model: sequelize.models.ClientMembership,
       as: 'memberships',
       where: { status: 'active' },
       required: false
-    }] : []
+    });
+  }
+
+  const client = await sequelize.models.Client.findByPk(clientId, {
+    include: includeOptions
   });
   
   if (!client) {
@@ -457,7 +464,7 @@ Prize.prototype.checkClientEligibility = async function(clientId) {
   return { eligible: true };
 };
 
-// Método de instancia para aplicar premio automáticamente
+// CORREGIDO: Método de instancia para aplicar premio automáticamente
 Prize.prototype.applyToClient = async function(clientId) {
   if (!this.auto_apply) {
     return { applied: false, reason: 'Premio requiere canje manual' };
@@ -500,7 +507,7 @@ Prize.prototype.applyToClient = async function(clientId) {
   return { applied: true };
 };
 
-// Método para aplicar días gratis de membresía
+// CORREGIDO: Método para aplicar días gratis de membresía
 Prize.prototype.applyMembershipDays = async function(client) {
   if (!sequelize.models.ClientMembership) return;
 
@@ -520,7 +527,7 @@ Prize.prototype.applyMembershipDays = async function(client) {
   }
 };
 
-// Método para aplicar producto gratuito
+// CORREGIDO: Método para aplicar producto gratuito
 Prize.prototype.applyFreeProduct = async function(client) {
   if (!this.free_product_id) return;
   

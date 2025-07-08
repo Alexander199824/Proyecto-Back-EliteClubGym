@@ -465,29 +465,43 @@ OrderItem.findNeedingQRGeneration = function() {
   });
 };
 
-// Método de clase para buscar ítems por estado
+// CORREGIDO: Método de clase para buscar ítems por estado
 OrderItem.findByStatus = function(status) {
+  // CORREGIDO: Construir includes dinámicamente basándose en modelos disponibles
+  const includeOptions = [];
+  
+  if (sequelize.models.Product) {
+    includeOptions.push({
+      model: sequelize.models.Product,
+      as: 'product',
+      required: false
+    });
+  }
+  
+  if (sequelize.models.Order) {
+    const orderInclude = {
+      model: sequelize.models.Order,
+      as: 'order',
+      required: false
+    };
+    
+    // Solo incluir Client si el modelo existe
+    if (sequelize.models.Client) {
+      orderInclude.include = [{
+        model: sequelize.models.Client,
+        as: 'client',
+        required: false
+      }];
+    }
+    
+    includeOptions.push(orderInclude);
+  }
+  
   return this.findAll({
     where: {
       item_status: status
     },
-    include: [
-      {
-        model: sequelize.models.Product,
-        as: 'product',
-        required: false
-      },
-      {
-        model: sequelize.models.Order,
-        as: 'order',
-        required: false,
-        include: [{
-          model: sequelize.models.Client,
-          as: 'client',
-          required: false
-        }]
-      }
-    ],
+    include: includeOptions,
     order: [['created_at', 'ASC']]
   });
 };

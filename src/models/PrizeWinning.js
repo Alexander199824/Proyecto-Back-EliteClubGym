@@ -514,7 +514,7 @@ PrizeWinning.prototype.cancel = async function(cancelledByUserId, reason) {
   await this.sendNotification('cancelled');
 };
 
-// Método de instancia para enviar notificación
+// CORREGIDO: Método de instancia para enviar notificación
 PrizeWinning.prototype.sendNotification = async function(type = 'won') {
   if (!sequelize.models.Notification) return;
   

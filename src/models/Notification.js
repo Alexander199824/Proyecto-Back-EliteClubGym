@@ -501,9 +501,31 @@ Notification.prototype.markAsFailed = async function(errorMessage, errorDetails 
   await this.save();
 };
 
-// Método de clase para obtener notificaciones pendientes de envío
+// CORREGIDO: Método de clase para obtener notificaciones pendientes de envío
 Notification.findPendingToSend = function() {
   const now = new Date();
+  
+  // CORREGIDO: Construir includes dinámicamente basándose en modelos disponibles
+  const includeOptions = [];
+  
+  if (sequelize.models.Client) {
+    const clientInclude = {
+      model: sequelize.models.Client,
+      as: 'client',
+      required: false
+    };
+    
+    // Solo incluir ClientPreferences si el modelo existe
+    if (sequelize.models.ClientPreferences) {
+      clientInclude.include = [{
+        model: sequelize.models.ClientPreferences,
+        as: 'preferences',
+        required: false
+      }];
+    }
+    
+    includeOptions.push(clientInclude);
+  }
   
   return this.findAll({
     where: {
@@ -520,18 +542,7 @@ Notification.findPendingToSend = function() {
         [sequelize.Sequelize.Op.lt]: sequelize.col('max_retries')
       }
     },
-    include: [
-      {
-        model: sequelize.models.Client,
-        as: 'client',
-        required: false,
-        include: [{
-          model: sequelize.models.ClientPreferences,
-          as: 'preferences',
-          required: false
-        }]
-      }
-    ],
+    include: includeOptions,
     order: [['priority', 'DESC'], ['scheduled_for', 'ASC']]
   });
 };

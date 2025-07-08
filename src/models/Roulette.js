@@ -1,6 +1,5 @@
-
 // Archivo: src/models/Roulette.js
-//  creo el modelo para configurar las ruletas de premios personalizables
+// CORREGIDO: Modelo para configurar las ruletas de premios personalizables
 
 const { DataTypes } = require('sequelize');
 const { sequelize } = require('../config/database');
@@ -360,11 +359,10 @@ Roulette.prototype.validateSectorsConfiguration = async function() {
     throw new Error('La configuración de sectores debe ser un array válido');
   }
   
-  // Verificar que todos los premios existen
-  const Prize = sequelize.models.Prize;
-  if (Prize) {
+  // Verificar que todos los premios existen - CORREGIDO
+  if (sequelize.models.Prize) {
     for (const sector of this.sectors_config) {
-      const prize = await Prize.findByPk(sector.prize_id);
+      const prize = await sequelize.models.Prize.findByPk(sector.prize_id);
       if (!prize) {
         throw new Error(`Premio ${sector.prize_id} no encontrado para sector`);
       }
@@ -419,12 +417,11 @@ Roulette.prototype.canClientSpin = async function(clientId) {
   if (!availability.available) return availability;
   
   // Verificar límites diarios
-  if (this.max_spins_per_day) {
+  if (this.max_spins_per_day && sequelize.models.PrizeWinning) {
     const todayStart = new Date(now);
     todayStart.setHours(0, 0, 0, 0);
     
-    const PrizeWinning = sequelize.models.PrizeWinning;
-    const todaySpins = await PrizeWinning.count({
+    const todaySpins = await sequelize.models.PrizeWinning.count({
       where: {
         client_id: clientId,
         roulette_id: this.id,
@@ -440,13 +437,12 @@ Roulette.prototype.canClientSpin = async function(clientId) {
   }
   
   // Verificar límites semanales
-  if (this.max_spins_per_week) {
+  if (this.max_spins_per_week && sequelize.models.PrizeWinning) {
     const weekStart = new Date(now);
     weekStart.setDate(weekStart.getDate() - weekStart.getDay());
     weekStart.setHours(0, 0, 0, 0);
     
-    const PrizeWinning = sequelize.models.PrizeWinning;
-    const weekSpins = await PrizeWinning.count({
+    const weekSpins = await sequelize.models.PrizeWinning.count({
       where: {
         client_id: clientId,
         roulette_id: this.id,
@@ -462,12 +458,11 @@ Roulette.prototype.canClientSpin = async function(clientId) {
   }
   
   // Verificar cooldown
-  if (this.cooldown_minutes > 0) {
+  if (this.cooldown_minutes > 0 && sequelize.models.PrizeWinning) {
     const cooldownStart = new Date(now);
     cooldownStart.setMinutes(cooldownStart.getMinutes() - this.cooldown_minutes);
     
-    const PrizeWinning = sequelize.models.PrizeWinning;
-    const recentSpin = await PrizeWinning.findOne({
+    const recentSpin = await sequelize.models.PrizeWinning.findOne({
       where: {
         client_id: clientId,
         roulette_id: this.id,
@@ -558,19 +553,23 @@ Roulette.getAvailable = function(category = null) {
   });
 };
 
-// Definir asociaciones
+// CORREGIDO: Asociaciones protegidas con verificación de existencia
 Roulette.associate = function(models) {
   // Una ruleta fue creada por un usuario
-  Roulette.belongsTo(models.User, {
-    foreignKey: 'created_by_user_id',
-    as: 'createdBy'
-  });
+  if (models.User) {
+    Roulette.belongsTo(models.User, {
+      foreignKey: 'created_by_user_id',
+      as: 'createdBy'
+    });
+  }
   
   // Una ruleta puede generar muchos premios ganados
-  Roulette.hasMany(models.PrizeWinning, {
-    foreignKey: 'roulette_id',
-    as: 'prizeWinnings'
-  });
+  if (models.PrizeWinning) {
+    Roulette.hasMany(models.PrizeWinning, {
+      foreignKey: 'roulette_id',
+      as: 'prizeWinnings'
+    });
+  }
 };
 
 module.exports = Roulette;

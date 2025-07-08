@@ -465,7 +465,7 @@ Order.prototype.isExpired = function() {
   return false;
 };
 
-// Método de instancia para enviar notificación de estado
+// CORREGIDO: Método de instancia para enviar notificación de estado
 Order.prototype.sendStatusNotification = async function(reason = null) {
   if (!sequelize.models.Notification) return;
   
@@ -490,32 +490,46 @@ Order.prototype.sendStatusNotification = async function(reason = null) {
   });
 };
 
-// Método de clase para buscar órdenes por estado y modalidad
+// CORREGIDO: Método de clase para buscar órdenes por estado y modalidad
 Order.findByStatusAndMode = function(status, deliveryMode = null) {
   const whereClause = { status };
   if (deliveryMode) {
     whereClause.delivery_mode = deliveryMode;
   }
   
+  // CORREGIDO: Construir includes dinámicamente basándose en modelos disponibles
+  const includeOptions = [];
+  
+  if (sequelize.models.Client) {
+    includeOptions.push({
+      model: sequelize.models.Client,
+      as: 'client',
+      required: false
+    });
+  }
+  
+  if (sequelize.models.OrderItem) {
+    const orderItemInclude = {
+      model: sequelize.models.OrderItem,
+      as: 'orderItems',
+      required: false
+    };
+    
+    // Solo incluir Product si el modelo existe
+    if (sequelize.models.Product) {
+      orderItemInclude.include = [{
+        model: sequelize.models.Product,
+        as: 'product',
+        required: false
+      }];
+    }
+    
+    includeOptions.push(orderItemInclude);
+  }
+  
   return this.findAll({
     where: whereClause,
-    include: [
-      {
-        model: sequelize.models.Client,
-        as: 'client',
-        required: false
-      },
-      {
-        model: sequelize.models.OrderItem,
-        as: 'orderItems',
-        required: false,
-        include: [{
-          model: sequelize.models.Product,
-          as: 'product',
-          required: false
-        }]
-      }
-    ],
+    include: includeOptions,
     order: [['order_date', 'DESC']]
   });
 };

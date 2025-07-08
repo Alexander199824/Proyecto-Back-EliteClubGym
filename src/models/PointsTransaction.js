@@ -427,7 +427,7 @@ PointsTransaction.createManualAdjustment = async function(clientId, pointsChange
   throw new Error('No se pudo crear el ajuste');
 };
 
-// Método de clase para obtener balance histórico de un cliente
+// CORREGIDO: Método de clase para obtener balance histórico de un cliente
 PointsTransaction.getClientBalanceHistory = function(clientId, startDate = null, endDate = null) {
   const whereClause = { client_id: clientId };
   
@@ -437,22 +437,30 @@ PointsTransaction.getClientBalanceHistory = function(clientId, startDate = null,
     if (endDate) whereClause.created_at[sequelize.Sequelize.Op.lte] = endDate;
   }
   
+  // CORREGIDO: Construir includes dinámicamente basándose en modelos disponibles
+  const includeOptions = [];
+  
+  if (sequelize.models.ClientCheckin) {
+    includeOptions.push({
+      model: sequelize.models.ClientCheckin,
+      as: 'checkin',
+      required: false
+    });
+  }
+  
+  if (sequelize.models.User) {
+    includeOptions.push({
+      model: sequelize.models.User,
+      as: 'processedBy',
+      required: false,
+      attributes: ['id', 'first_name', 'last_name']
+    });
+  }
+  
   return this.findAll({
     where: whereClause,
     order: [['created_at', 'ASC']],
-    include: [
-      {
-        model: sequelize.models.ClientCheckin,
-        as: 'checkin',
-        required: false
-      },
-      {
-        model: sequelize.models.User,
-        as: 'processedBy',
-        required: false,
-        attributes: ['id', 'first_name', 'last_name']
-      }
-    ]
+    include: includeOptions
   });
 };
 
@@ -479,10 +487,22 @@ PointsTransaction.getPointsStatsByPeriod = async function(startDate, endDate) {
   });
 };
 
-// Método de clase para obtener top clientes por puntos ganados
+// CORREGIDO: Método de clase para obtener top clientes por puntos ganados
 PointsTransaction.getTopClientsByPoints = function(period = 30, limit = 10) {
   const startDate = new Date();
   startDate.setDate(startDate.getDate() - period);
+  
+  // CORREGIDO: Construir includes dinámicamente
+  const includeOptions = [];
+  
+  if (sequelize.models.Client) {
+    includeOptions.push({
+      model: sequelize.models.Client,
+      as: 'client',
+      required: false,
+      attributes: ['id', 'first_name', 'last_name', 'email']
+    });
+  }
   
   return this.findAll({
     where: {
@@ -496,14 +516,7 @@ PointsTransaction.getTopClientsByPoints = function(period = 30, limit = 10) {
       [sequelize.fn('SUM', sequelize.col('points_earned')), 'total_points'],
       [sequelize.fn('COUNT', sequelize.col('id')), 'transaction_count']
     ],
-    include: [
-      {
-        model: sequelize.models.Client,
-        as: 'client',
-        required: false,
-        attributes: ['id', 'first_name', 'last_name', 'email']
-      }
-    ],
+    include: includeOptions,
     group: ['client_id', 'client.id'],
     order: [[sequelize.fn('SUM', sequelize.col('points_earned')), 'DESC']],
     limit
