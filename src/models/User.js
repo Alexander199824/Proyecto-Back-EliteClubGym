@@ -1,0 +1,227 @@
+// Archivo: src/models/User.js
+// Yo como desarrollador creo el modelo para administradores y personal del gimnasio
+
+const { DataTypes } = require('sequelize');
+const bcrypt = require('bcryptjs');
+const { sequelize } = require('../config/database');
+
+const User = sequelize.define('User', {
+  id: {
+    type: DataTypes.UUID,
+    defaultValue: DataTypes.UUIDV4,
+    primaryKey: true,
+    comment: 'ID único del usuario administrativo'
+  },
+  email: {
+    type: DataTypes.STRING(100),
+    allowNull: false,
+    unique: true,
+    validate: {
+      isEmail: {
+        msg: 'Debe ser un email válido'
+      }
+    },
+    comment: 'Email único para autenticación'
+  },
+  password: {
+    type: DataTypes.STRING(255),
+    allowNull: false,
+    validate: {
+      len: {
+        args: [6, 255],
+        msg: 'La contraseña debe tener al menos 6 caracteres'
+      }
+    },
+    comment: 'Contraseña encriptada con bcrypt'
+  },
+  first_name: {
+    type: DataTypes.STRING(50),
+    allowNull: false,
+    validate: {
+      notEmpty: {
+        msg: 'El nombre es requerido'
+      },
+      len: {
+        args: [2, 50],
+        msg: 'El nombre debe tener entre 2 y 50 caracteres'
+      }
+    },
+    comment: 'Nombre del usuario'
+  },
+  last_name: {
+    type: DataTypes.STRING(50),
+    allowNull: false,
+    validate: {
+      notEmpty: {
+        msg: 'El apellido es requerido'
+      },
+      len: {
+        args: [2, 50],
+        msg: 'El apellido debe tener entre 2 y 50 caracteres'
+      }
+    },
+    comment: 'Apellido del usuario'
+  },
+  role: {
+    type: DataTypes.ENUM('admin', 'manager', 'staff'),
+    allowNull: false,
+    defaultValue: 'staff',
+    comment: 'Rol del usuario: admin=Administrador, manager=Gerente, staff=Personal'
+  },
+  phone: {
+    type: DataTypes.STRING(20),
+    allowNull: true,
+    validate: {
+      is: {
+        args: /^[\+]?[\d\s\-\(\)]+$/,
+        msg: 'Número de teléfono inválido'
+      }
+    },
+    comment: 'Número de teléfono de contacto'
+  },
+  is_active: {
+    type: DataTypes.BOOLEAN,
+    allowNull: false,
+    defaultValue: true,
+    comment: 'Estado activo del usuario'
+  },
+  last_login: {
+    type: DataTypes.DATE,
+    allowNull: true,
+    comment: 'Fecha y hora del último login'
+  },
+  login_attempts: {
+    type: DataTypes.INTEGER,
+    allowNull: false,
+    defaultValue: 0,
+    comment: 'Número de intentos de login fallidos consecutivos'
+  },
+  locked_until: {
+    type: DataTypes.DATE,
+    allowNull: true,
+    comment: 'Fecha hasta la cual la cuenta está bloqueada por intentos fallidos'
+  },
+  two_factor_enabled: {
+    type: DataTypes.BOOLEAN,
+    allowNull: false,
+    defaultValue: false,
+    comment: 'Indica si el usuario tiene habilitada la autenticación de dos factores'
+  },
+  profile_image_id: {
+    type: DataTypes.UUID,
+    allowNull: true,
+    references: {
+      model: 'images',
+      key: 'id'
+    },
+    comment: 'ID de la imagen de perfil almacenada en la tabla images'
+  }
+}, {
+  tableName: 'users',
+  timestamps: true,
+  paranoid: true, // Soft delete
+  indexes: [
+    {
+      unique: true,
+      fields: ['email']
+    },
+    {
+      fields: ['role']
+    },
+    {
+      fields: ['is_active']
+    },
+    {
+      fields: ['last_login']
+    }
+  ],
+  comment: 'Tabla de usuarios administrativos del sistema'
+});
+
+// Hook para encriptar contraseña antes de crear usuario
+User.beforeCreate(async (user) => {
+  if (user.password) {
+    const saltRounds = 12;
+    user.password = await bcrypt.hash(user.password, saltRounds);
+  }
+});
+
+// Hook para encriptar contraseña antes de actualizar usuario
+User.beforeUpdate(async (user) => {
+  if (user.changed('password')) {
+    const saltRounds = 12;
+    user.password = await bcrypt.hash(user.password, saltRounds);
+  }
+});
+
+// Método de instancia para verificar contraseña
+User.prototype.validatePassword = async function(password) {
+  return await bcrypt.compare(password, this.password);
+};
+
+// Método de instancia para obtener nombre completo
+User.prototype.getFullName = function() {
+  return `${this.first_name} ${this.last_name}`;
+};
+
+// Método de instancia para verificar si la cuenta está bloqueada
+User.prototype.isLocked = function() {
+  return this.locked_until && this.locked_until > new Date();
+};
+
+// Método de instancia para incrementar intentos de login
+User.prototype.incrementLoginAttempts = async function() {
+  const maxAttempts = 5;
+  const lockTime = 30 * 60 * 1000; // 30 minutos en millisegundos
+  
+  this.login_attempts += 1;
+  
+  // Si alcanza el máximo de intentos, bloquear la cuenta
+  if (this.login_attempts >= maxAttempts) {
+    this.locked_until = new Date(Date.now() + lockTime);
+  }
+  
+  await this.save();
+};
+
+// Método de instancia para resetear intentos de login
+User.prototype.resetLoginAttempts = async function() {
+  this.login_attempts = 0;
+  this.locked_until = null;
+  this.last_login = new Date();
+  await this.save();
+};
+
+// Método de clase para buscar usuario activo por email
+User.findActiveByEmail = function(email) {
+  return this.findOne({
+    where: {
+      email: email,
+      is_active: true
+    }
+  });
+};
+
+// Definir asociaciones
+User.associate = function(models) {
+  // Un usuario puede tener una imagen de perfil
+  User.belongsTo(models.Image, {
+    foreignKey: 'profile_image_id',
+    as: 'profileImage',
+    onDelete: 'SET NULL'
+  });
+  
+  // Un usuario puede hacer muchas verificaciones de transferencias
+  User.hasMany(models.PaymentVerification, {
+    foreignKey: 'verified_by_user_id',
+    as: 'verifiedTransfers'
+  });
+  
+  // Un usuario puede crear muchas notificaciones
+  User.hasMany(models.Notification, {
+    foreignKey: 'created_by_user_id',
+    as: 'createdNotifications'
+  });
+};
+
+module.exports = User;
