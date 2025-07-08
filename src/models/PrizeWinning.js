@@ -1,5 +1,5 @@
 // Archivo: src/models/PrizeWinning.js
-// creo el modelo para registrar premios ganados por los clientes
+// CORREGIDO: Modelo para registrar premios ganados por los clientes
 
 const { DataTypes } = require('sequelize');
 const { sequelize } = require('../config/database');
@@ -125,7 +125,7 @@ const PrizeWinning = sequelize.define('PrizeWinning', {
   redemption_code: {
     type: DataTypes.STRING(50),
     allowNull: true,
-    unique: true,
+    // CORREGIDO: Removido unique: true de aquí
     comment: 'Código único para canjear el premio manualmente'
   },
   // Información de aplicación específica
@@ -281,6 +281,7 @@ const PrizeWinning = sequelize.define('PrizeWinning', {
     {
       fields: ['manual_redemption_required']
     },
+    // CORREGIDO: Movido unique constraint a indexes
     {
       unique: true,
       fields: ['redemption_code'],
@@ -309,9 +310,8 @@ PrizeWinning.beforeCreate(async (prizeWinning) => {
   }
   
   // Calcular fecha de expiración basándose en el premio
-  if (!prizeWinning.expires_date) {
-    const Prize = sequelize.models.Prize;
-    const prize = await Prize.findByPk(prizeWinning.prize_id);
+  if (!prizeWinning.expires_date && sequelize.models.Prize) {
+    const prize = await sequelize.models.Prize.findByPk(prizeWinning.prize_id);
     
     if (prize && prize.expiration_days) {
       const expirationDate = new Date();
@@ -352,16 +352,16 @@ PrizeWinning.beforeUpdate(async (prizeWinning) => {
 
 // Hook para actualizar estadísticas del premio después de crear
 PrizeWinning.afterCreate(async (prizeWinning) => {
-  const Prize = sequelize.models.Prize;
-  const prize = await Prize.findByPk(prizeWinning.prize_id);
-  if (prize) {
-    await prize.incrementAwarded();
+  if (sequelize.models.Prize) {
+    const prize = await sequelize.models.Prize.findByPk(prizeWinning.prize_id);
+    if (prize) {
+      await prize.incrementAwarded();
+    }
   }
   
   // Actualizar estadísticas de la ruleta si aplica
-  if (prizeWinning.roulette_id) {
-    const Roulette = sequelize.models.Roulette;
-    const roulette = await Roulette.findByPk(prizeWinning.roulette_id);
+  if (prizeWinning.roulette_id && sequelize.models.Roulette) {
+    const roulette = await sequelize.models.Roulette.findByPk(prizeWinning.roulette_id);
     if (roulette) {
       await roulette.recordSpin(prizeWinning.id);
     }
@@ -417,34 +417,37 @@ PrizeWinning.prototype.apply = async function(processedByUserId = null) {
     throw new Error(validation.reason);
   }
   
-  const Prize = sequelize.models.Prize;
-  const prize = await Prize.findByPk(this.prize_id);
-  
-  if (!prize) {
-    throw new Error('Premio no encontrado');
-  }
-  
-  // Aplicar el premio según su tipo
-  const result = await prize.applyToClient(this.client_id);
-  
-  if (result.applied) {
-    this.status = 'applied';
-    this.auto_applied = true;
-    this.applied_date = new Date();
-    this.processed_by_user_id = processedByUserId;
+  if (sequelize.models.Prize) {
+    const prize = await sequelize.models.Prize.findByPk(this.prize_id);
     
-    await this.save();
-    
-    // Actualizar estadísticas del premio
-    await prize.incrementRedeemed();
-    
-    // Enviar notificación si no se ha enviado
-    if (!this.notification_sent) {
-      await this.sendNotification();
+    if (!prize) {
+      throw new Error('Premio no encontrado');
     }
+    
+    // Aplicar el premio según su tipo
+    const result = await prize.applyToClient(this.client_id);
+    
+    if (result.applied) {
+      this.status = 'applied';
+      this.auto_applied = true;
+      this.applied_date = new Date();
+      this.processed_by_user_id = processedByUserId;
+      
+      await this.save();
+      
+      // Actualizar estadísticas del premio
+      await prize.incrementRedeemed();
+      
+      // Enviar notificación si no se ha enviado
+      if (!this.notification_sent) {
+        await this.sendNotification();
+      }
+    }
+    
+    return result;
   }
   
-  return result;
+  throw new Error('No se pudo aplicar el premio');
 };
 
 // Método de instancia para canjear manualmente
@@ -465,10 +468,11 @@ PrizeWinning.prototype.redeem = async function(processedByUserId, notes = null) 
   await this.save();
   
   // Actualizar estadísticas del premio
-  const Prize = sequelize.models.Prize;
-  const prize = await Prize.findByPk(this.prize_id);
-  if (prize) {
-    await prize.incrementRedeemed();
+  if (sequelize.models.Prize) {
+    const prize = await sequelize.models.Prize.findByPk(this.prize_id);
+    if (prize) {
+      await prize.incrementRedeemed();
+    }
   }
   
   // Enviar notificación de canje
@@ -484,11 +488,12 @@ PrizeWinning.prototype.verify = async function(verifiedByUserId) {
   await this.save();
   
   // Si el premio se aplica automáticamente después de verificar, hacerlo
-  const Prize = sequelize.models.Prize;
-  const prize = await Prize.findByPk(this.prize_id);
-  
-  if (prize && prize.auto_apply) {
-    await this.apply(verifiedByUserId);
+  if (sequelize.models.Prize) {
+    const prize = await sequelize.models.Prize.findByPk(this.prize_id);
+    
+    if (prize && prize.auto_apply) {
+      await this.apply(verifiedByUserId);
+    }
   }
 };
 
@@ -511,8 +516,7 @@ PrizeWinning.prototype.cancel = async function(cancelledByUserId, reason) {
 
 // Método de instancia para enviar notificación
 PrizeWinning.prototype.sendNotification = async function(type = 'won') {
-  const Notification = sequelize.models.Notification;
-  if (!Notification) return;
+  if (!sequelize.models.Notification) return;
   
   const messages = {
     'won': `¡Felicidades! Has ganado: ${this.prize_name}`,
@@ -522,7 +526,7 @@ PrizeWinning.prototype.sendNotification = async function(type = 'won') {
     'expired': `Tu premio "${this.prize_name}" ha expirado`
   };
   
-  await Notification.create({
+  await sequelize.models.Notification.create({
     client_id: this.client_id,
     title: 'Premio Ganado',
     message: messages[type] || messages['won'],
@@ -562,7 +566,8 @@ PrizeWinning.findPendingByClient = function(clientId) {
     include: [
       {
         model: sequelize.models.Prize,
-        as: 'prize'
+        as: 'prize',
+        required: false
       }
     ],
     order: [['won_date', 'DESC']]
@@ -584,11 +589,13 @@ PrizeWinning.findExpiringPrizes = function(daysAhead = 3) {
     include: [
       {
         model: sequelize.models.Client,
-        as: 'client'
+        as: 'client',
+        required: false
       },
       {
         model: sequelize.models.Prize,
-        as: 'prize'
+        as: 'prize',
+        required: false
       }
     ]
   });
@@ -604,77 +611,97 @@ PrizeWinning.findByRedemptionCode = function(code) {
     include: [
       {
         model: sequelize.models.Client,
-        as: 'client'
+        as: 'client',
+        required: false
       },
       {
         model: sequelize.models.Prize,
-        as: 'prize'
+        as: 'prize',
+        required: false
       }
     ]
   });
 };
 
-// Definir asociaciones
+// CORREGIDO: Asociaciones protegidas con verificación de existencia
 PrizeWinning.associate = function(models) {
   // Un premio ganado pertenece a un cliente
-  PrizeWinning.belongsTo(models.Client, {
-    foreignKey: 'client_id',
-    as: 'client',
-    onDelete: 'CASCADE'
-  });
+  if (models.Client) {
+    PrizeWinning.belongsTo(models.Client, {
+      foreignKey: 'client_id',
+      as: 'client',
+      onDelete: 'CASCADE'
+    });
+  }
   
   // Un premio ganado corresponde a un premio
-  PrizeWinning.belongsTo(models.Prize, {
-    foreignKey: 'prize_id',
-    as: 'prize',
-    onDelete: 'RESTRICT'
-  });
+  if (models.Prize) {
+    PrizeWinning.belongsTo(models.Prize, {
+      foreignKey: 'prize_id',
+      as: 'prize',
+      onDelete: 'RESTRICT'
+    });
+  }
   
   // Un premio ganado puede venir de una ruleta
-  PrizeWinning.belongsTo(models.Roulette, {
-    foreignKey: 'roulette_id',
-    as: 'roulette',
-    onDelete: 'SET NULL'
-  });
+  if (models.Roulette) {
+    PrizeWinning.belongsTo(models.Roulette, {
+      foreignKey: 'roulette_id',
+      as: 'roulette',
+      onDelete: 'SET NULL'
+    });
+  }
   
   // Un premio ganado puede venir de un código QR
-  PrizeWinning.belongsTo(models.QRCode, {
-    foreignKey: 'qr_code_id',
-    as: 'qrCode',
-    onDelete: 'SET NULL'
-  });
+  if (models.QRCode) {
+    PrizeWinning.belongsTo(models.QRCode, {
+      foreignKey: 'qr_code_id',
+      as: 'qrCode',
+      onDelete: 'SET NULL'
+    });
+  }
   
   // Un premio ganado puede aplicarse a una membresía
-  PrizeWinning.belongsTo(models.ClientMembership, {
-    foreignKey: 'applied_to_membership_id',
-    as: 'appliedToMembership',
-    onDelete: 'SET NULL'
-  });
+  if (models.ClientMembership) {
+    PrizeWinning.belongsTo(models.ClientMembership, {
+      foreignKey: 'applied_to_membership_id',
+      as: 'appliedToMembership',
+      onDelete: 'SET NULL'
+    });
+  }
   
   // Un premio ganado puede aplicarse a una orden
-  PrizeWinning.belongsTo(models.Order, {
-    foreignKey: 'applied_to_order_id',
-    as: 'appliedToOrder',
-    onDelete: 'SET NULL'
-  });
+  if (models.Order) {
+    PrizeWinning.belongsTo(models.Order, {
+      foreignKey: 'applied_to_order_id',
+      as: 'appliedToOrder',
+      onDelete: 'SET NULL'
+    });
+  }
   
   // Un premio ganado fue procesado por un usuario
-  PrizeWinning.belongsTo(models.User, {
-    foreignKey: 'processed_by_user_id',
-    as: 'processedBy'
-  });
+  if (models.User) {
+    PrizeWinning.belongsTo(models.User, {
+      foreignKey: 'processed_by_user_id',
+      as: 'processedBy'
+    });
+  }
   
   // Un premio ganado fue verificado por un usuario
-  PrizeWinning.belongsTo(models.User, {
-    foreignKey: 'verified_by_user_id',
-    as: 'verifiedBy'
-  });
+  if (models.User) {
+    PrizeWinning.belongsTo(models.User, {
+      foreignKey: 'verified_by_user_id',
+      as: 'verifiedBy'
+    });
+  }
   
   // Un premio ganado fue cancelado por un usuario
-  PrizeWinning.belongsTo(models.User, {
-    foreignKey: 'cancelled_by_user_id',
-    as: 'cancelledBy'
-  });
+  if (models.User) {
+    PrizeWinning.belongsTo(models.User, {
+      foreignKey: 'cancelled_by_user_id',
+      as: 'cancelledBy'
+    });
+  }
 };
 
 module.exports = PrizeWinning;

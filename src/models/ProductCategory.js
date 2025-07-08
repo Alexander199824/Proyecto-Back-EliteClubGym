@@ -1,5 +1,5 @@
 // Archivo: src/models/ProductCategory.js
-//creo el modelo para categorizar los productos del gimnasio
+// CORREGIDO: Modelo para categorizar los productos del gimnasio
 
 const { DataTypes } = require('sequelize');
 const { sequelize } = require('../config/database');
@@ -14,7 +14,7 @@ const ProductCategory = sequelize.define('ProductCategory', {
   name: {
     type: DataTypes.STRING(100),
     allowNull: false,
-    unique: true,
+    // CORREGIDO: Removido unique: true de aquí
     validate: {
       notEmpty: {
         msg: 'El nombre de la categoría es requerido'
@@ -34,7 +34,7 @@ const ProductCategory = sequelize.define('ProductCategory', {
   slug: {
     type: DataTypes.STRING(100),
     allowNull: false,
-    unique: true,
+    // CORREGIDO: Removido unique: true de aquí
     validate: {
       is: {
         args: /^[a-z0-9-]+$/,
@@ -213,6 +213,7 @@ const ProductCategory = sequelize.define('ProductCategory', {
   timestamps: true,
   paranoid: true, // Soft delete
   indexes: [
+    // CORREGIDO: Movido unique constraints a indexes
     {
       unique: true,
       fields: ['name']
@@ -297,9 +298,8 @@ ProductCategory.prototype.getFullPath = async function() {
 
 // Método de instancia para actualizar contador de productos
 ProductCategory.prototype.updateProductCount = async function() {
-  const Product = sequelize.models.Product;
-  if (Product) {
-    const count = await Product.count({
+  if (sequelize.models.Product) {
+    const count = await sequelize.models.Product.count({
       where: {
         category_id: this.id,
         is_active: true
@@ -403,7 +403,7 @@ ProductCategory.findBySlug = function(slug) {
   });
 };
 
-// Definir asociaciones
+// CORREGIDO: Asociaciones protegidas con verificación de existencia
 ProductCategory.associate = function(models) {
   // Una categoría puede tener una categoría padre
   ProductCategory.belongsTo(ProductCategory, {
@@ -419,17 +419,21 @@ ProductCategory.associate = function(models) {
   });
   
   // Una categoría tiene muchos productos
-  ProductCategory.hasMany(models.Product, {
-    foreignKey: 'category_id',
-    as: 'products'
-  });
+  if (models.Product) {
+    ProductCategory.hasMany(models.Product, {
+      foreignKey: 'category_id',
+      as: 'products'
+    });
+  }
   
   // Una categoría puede tener una imagen
-  ProductCategory.belongsTo(models.Image, {
-    foreignKey: 'image_id',
-    as: 'image',
-    onDelete: 'SET NULL'
-  });
+  if (models.Image) {
+    ProductCategory.belongsTo(models.Image, {
+      foreignKey: 'image_id',
+      as: 'image',
+      onDelete: 'SET NULL'
+    });
+  }
 };
 
 module.exports = ProductCategory;

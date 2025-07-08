@@ -1,5 +1,5 @@
 // Archivo: src/models/QRCode.js
-// creo el modelo para códigos QR únicos vinculados a productos y gamificación
+// CORREGIDO: Modelo para códigos QR únicos vinculados a productos y gamificación
 
 const { DataTypes } = require('sequelize');
 const { sequelize } = require('../config/database');
@@ -15,7 +15,7 @@ const QRCode = sequelize.define('QRCode', {
   code: {
     type: DataTypes.STRING(255),
     allowNull: false,
-    unique: true,
+    // CORREGIDO: Removido unique: true de aquí
     comment: 'Código QR único generado'
   },
   code_type: {
@@ -231,6 +231,7 @@ const QRCode = sequelize.define('QRCode', {
   timestamps: true,
   paranoid: true, // Soft delete
   indexes: [
+    // CORREGIDO: Movido unique constraint a indexes
     {
       unique: true,
       fields: ['code']
@@ -483,11 +484,13 @@ QRCode.findExpiringCodes = function(daysAhead = 7) {
     include: [
       {
         model: sequelize.models.Product,
-        as: 'product'
+        as: 'product',
+        required: false
       },
       {
         model: sequelize.models.Client,
-        as: 'client'
+        as: 'client',
+        required: false
       }
     ]
   });
@@ -514,60 +517,77 @@ QRCode.generateBatch = async function(count, config = {}) {
   return { batch_id: batchId, codes };
 };
 
-// Definir asociaciones
+// CORREGIDO: Asociaciones protegidas con verificación de existencia
 QRCode.associate = function(models) {
   // Un código QR puede estar vinculado a un producto
-  QRCode.belongsTo(models.Product, {
-    foreignKey: 'product_id',
-    as: 'product',
-    onDelete: 'SET NULL'
-  });
+  if (models.Product) {
+    QRCode.belongsTo(models.Product, {
+      foreignKey: 'product_id',
+      as: 'product',
+      onDelete: 'SET NULL'
+    });
+  }
   
   // Un código QR puede estar vinculado a una orden
-  QRCode.belongsTo(models.Order, {
-    foreignKey: 'order_id',
-    as: 'order',
-    onDelete: 'SET NULL'
-  });
+  if (models.Order) {
+    QRCode.belongsTo(models.Order, {
+      foreignKey: 'order_id',
+      as: 'order',
+      onDelete: 'SET NULL'
+    });
+  }
   
   // Un código QR puede estar vinculado a un ítem de orden
-  QRCode.belongsTo(models.OrderItem, {
-    foreignKey: 'order_item_id',
-    as: 'orderItem',
-    onDelete: 'SET NULL'
-  });
+  if (models.OrderItem) {
+    QRCode.belongsTo(models.OrderItem, {
+      foreignKey: 'order_item_id',
+      as: 'orderItem',
+      onDelete: 'SET NULL'
+    });
+  }
   
   // Un código QR puede pertenecer a un cliente
-  QRCode.belongsTo(models.Client, {
-    foreignKey: 'client_id',
-    as: 'client',
-    onDelete: 'SET NULL'
-  });
+  if (models.Client) {
+    QRCode.belongsTo(models.Client, {
+      foreignKey: 'client_id',
+      as: 'client',
+      onDelete: 'SET NULL'
+    });
+  }
   
   // Un código QR fue usado por un cliente
-  QRCode.belongsTo(models.Client, {
-    foreignKey: 'used_by_client_id',
-    as: 'usedByClient',
-    onDelete: 'SET NULL'
-  });
+  if (models.Client) {
+    QRCode.belongsTo(models.Client, {
+      foreignKey: 'used_by_client_id',
+      as: 'usedByClient',
+      onDelete: 'SET NULL'
+    });
+  }
   
   // Un código QR puede tener un premio fijo
-  QRCode.belongsTo(models.Prize, {
-    foreignKey: 'fixed_prize_id',
-    as: 'fixedPrize',
-    onDelete: 'SET NULL'
-  });
+  if (models.Prize) {
+    QRCode.belongsTo(models.Prize, {
+      foreignKey: 'fixed_prize_id',
+      as: 'fixedPrize',
+      onDelete: 'SET NULL'
+    });
+  }
   
   // Un código QR fue creado por un usuario
-  QRCode.belongsTo(models.User, {
-    foreignKey: 'created_by_user_id',
-    as: 'createdBy'
-  });
+  if (models.User) {
+    QRCode.belongsTo(models.User, {
+      foreignKey: 'created_by_user_id',
+      as: 'createdBy'
+    });
+  }
   
   // Un código QR puede generar muchos premios ganados
-  QRCode.hasMany(models.PrizeWinning, {
-foreignKey: 'qr_code_id',
-as: 'prizeWinnings'
-});
+  if (models.PrizeWinning) {
+    QRCode.hasMany(models.PrizeWinning, {
+      foreignKey: 'qr_code_id',
+      as: 'prizeWinnings'
+    });
+  }
 };
+
 module.exports = QRCode;

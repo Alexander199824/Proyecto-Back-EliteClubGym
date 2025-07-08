@@ -1,5 +1,5 @@
 // Archivo: src/models/Product.js
-//  creo el modelo para el catálogo de productos/complementos del gimnasio
+// CORREGIDO: Modelo para el catálogo de productos/complementos del gimnasio
 
 const { DataTypes } = require('sequelize');
 const { sequelize } = require('../config/database');
@@ -48,7 +48,7 @@ const Product = sequelize.define('Product', {
   sku: {
     type: DataTypes.STRING(50),
     allowNull: false,
-    unique: true,
+    // CORREGIDO: Removido unique: true de aquí
     validate: {
       notEmpty: {
         msg: 'El SKU es requerido'
@@ -349,6 +349,7 @@ const Product = sequelize.define('Product', {
   timestamps: true,
   paranoid: true, // Soft delete
   indexes: [
+    // CORREGIDO: Movido unique constraint a indexes
     {
       unique: true,
       fields: ['sku']
@@ -530,10 +531,13 @@ Product.findWithFilters = function(filters = {}) {
     whereClause.is_featured = true;
   }
 
-  includeClause.push({
-    model: sequelize.models.ProductCategory,
-    as: 'category'
-  });
+  if (sequelize.models.ProductCategory) {
+    includeClause.push({
+      model: sequelize.models.ProductCategory,
+      as: 'category',
+      required: false
+    });
+  }
 
   const orderClause = [];
   if (filters.sort_by) {
@@ -583,38 +587,48 @@ Product.findLowStock = function() {
   });
 };
 
-// Definir asociaciones - CORREGIDAS
+// CORREGIDO: Asociaciones protegidas con verificación de existencia
 Product.associate = function(models) {
   // Un producto pertenece a una categoría
-  Product.belongsTo(models.ProductCategory, {
-    foreignKey: 'category_id',
-    as: 'category',
-    onDelete: 'RESTRICT'
-  });
+  if (models.ProductCategory) {
+    Product.belongsTo(models.ProductCategory, {
+      foreignKey: 'category_id',
+      as: 'category',
+      onDelete: 'RESTRICT'
+    });
+  }
 
   // Un producto puede tener muchas imágenes
-  Product.hasMany(models.Image, {
-    foreignKey: 'product_id',
-    as: 'images'
-  });
+  if (models.Image) {
+    Product.hasMany(models.Image, {
+      foreignKey: 'product_id',
+      as: 'images'
+    });
+  }
 
   // Un producto puede tener muchos ítems de orden
-  Product.hasMany(models.OrderItem, {
-    foreignKey: 'product_id',
-    as: 'orderItems'
-  });
+  if (models.OrderItem) {
+    Product.hasMany(models.OrderItem, {
+      foreignKey: 'product_id',
+      as: 'orderItems'
+    });
+  }
 
   // Un producto puede tener muchos códigos QR
-  Product.hasMany(models.QRCode, {
-    foreignKey: 'product_id',
-    as: 'qrCodes'
-  });
+  if (models.QRCode) {
+    Product.hasMany(models.QRCode, {
+      foreignKey: 'product_id',
+      as: 'qrCodes'
+    });
+  }
 
   // Un producto puede ser premio gratuito
-  Product.hasMany(models.Prize, {
-    foreignKey: 'free_product_id',
-    as: 'prizesAsFreeProduct'
-  });
+  if (models.Prize) {
+    Product.hasMany(models.Prize, {
+      foreignKey: 'free_product_id',
+      as: 'prizesAsFreeProduct'
+    });
+  }
 };
 
 module.exports = Product;

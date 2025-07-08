@@ -1,5 +1,5 @@
 // Archivo: src/models/PointsTransaction.js
-// creo el modelo para registrar todas las transacciones de puntos por asistencia
+// CORREGIDO: Modelo para registrar todas las transacciones de puntos por asistencia
 
 const { DataTypes } = require('sequelize');
 const { sequelize } = require('../config/database');
@@ -275,81 +275,83 @@ PointsTransaction.prototype.reverse = async function(reversedByUserId, reason) {
   }
   
   // Obtener balance actual del cliente
-  const Client = sequelize.models.Client;
-  const client = await Client.findByPk(this.client_id);
-  
-  if (!client) {
-    throw new Error('Cliente no encontrado');
+  if (sequelize.models.Client) {
+    const client = await sequelize.models.Client.findByPk(this.client_id);
+    
+    if (!client) {
+      throw new Error('Cliente no encontrado');
+    }
+    
+    // Crear transacción de reversión
+    const reversalTransaction = await PointsTransaction.create({
+      client_id: this.client_id,
+      transaction_type: 'adjustment',
+      source_type: 'correction',
+      points_earned: this.points_deducted, // Invertir la transacción original
+      points_deducted: this.points_earned,
+      balance_before: client.total_points,
+      reason: `Reversión: ${reason}`,
+      description: `Reversión de transacción ${this.id}`,
+      processed_by_user_id: reversedByUserId,
+      is_manual: true,
+      source_reference_id: this.id
+    });
+    
+    // Marcar esta transacción como reversada
+    this.is_reversed = true;
+    this.reversed_by_transaction_id = reversalTransaction.id;
+    this.reversal_reason = reason;
+    await this.save();
+    
+    // Actualizar balance del cliente
+    await client.update({ total_points: reversalTransaction.balance_after });
+    
+    return reversalTransaction;
   }
   
-  // Crear transacción de reversión
-  const reversalTransaction = await PointsTransaction.create({
-    client_id: this.client_id,
-    transaction_type: 'adjustment',
-    source_type: 'correction',
-    points_earned: this.points_deducted, // Invertir la transacción original
-    points_deducted: this.points_earned,
-    balance_before: client.total_points,
-    reason: `Reversión: ${reason}`,
-    description: `Reversión de transacción ${this.id}`,
-    processed_by_user_id: reversedByUserId,
-    is_manual: true,
-    source_reference_id: this.id
-  });
-  
-  // Marcar esta transacción como reversada
-  this.is_reversed = true;
-  this.reversed_by_transaction_id = reversalTransaction.id;
-  this.reversal_reason = reason;
-  await this.save();
-  
-  // Actualizar balance del cliente
-  await client.update({ total_points: reversalTransaction.balance_after });
-  
-  return reversalTransaction;
+  throw new Error('No se pudo procesar la reversión');
 };
 
 // Método de instancia para enviar notificación
 PointsTransaction.prototype.sendNotification = async function() {
   if (this.notification_sent || this.points_change <= 0) return;
   
-  const Notification = sequelize.models.Notification;
-  if (!Notification) return;
-  
-  let message = '';
-  
-  switch (this.source_type) {
-    case 'checkin':
-      message = `¡Ganaste ${this.points_change} puntos por tu check-in! `;
-      if (this.consecutive_days_bonus > 0) {
-        message += `Incluye ${this.consecutive_days_bonus} puntos bonus por días consecutivos. `;
-      }
-      if (this.time_bonus > 0) {
-        message += `Incluye ${this.time_bonus} puntos bonus por horario. `;
-      }
-      break;
-    case 'bonus':
-      message = `¡Recibiste ${this.points_change} puntos bonus! ${this.reason}`;
-      break;
-    case 'manual':
-      message = `Se ajustaron tus puntos: ${this.points_change > 0 ? '+' : ''}${this.points_change} puntos. ${this.reason}`;
-      break;
-    default:
-      message = `Puntos actualizados: ${this.points_change > 0 ? '+' : ''}${this.points_change}. ${this.reason}`;
+  if (sequelize.models.Notification) {
+    let message = '';
+    
+    switch (this.source_type) {
+      case 'checkin':
+        message = `¡Ganaste ${this.points_change} puntos por tu check-in! `;
+        if (this.consecutive_days_bonus > 0) {
+          message += `Incluye ${this.consecutive_days_bonus} puntos bonus por días consecutivos. `;
+        }
+        if (this.time_bonus > 0) {
+          message += `Incluye ${this.time_bonus} puntos bonus por horario. `;
+        }
+        break;
+      case 'bonus':
+        message = `¡Recibiste ${this.points_change} puntos bonus! ${this.reason}`;
+        break;
+      case 'manual':
+        message = `Se ajustaron tus puntos: ${this.points_change > 0 ? '+' : ''}${this.points_change} puntos. ${this.reason}`;
+        break;
+      default:
+        message = `Puntos actualizados: ${this.points_change > 0 ? '+' : ''}${this.points_change}. ${this.reason}`;
+    }
+    
+    await sequelize.models.Notification.create({
+      client_id: this.client_id,
+      title: 'Puntos Actualizados',
+      message: message,
+      type: 'points',
+      related_id: this.id,
+      priority: 'low'
+    });
+    
+    this.notification_sent = true;
+    this.notification_sent_date = new Date();
+    await this.save();
   }
-  
-  await Notification.create({
-    client_id: this.client_id,
-    title: 'Puntos Actualizados',
-    message: message,
-    type: 'points',
-    related_id: this.id,
-    priority: 'low'
-  });
-  
-  this.notification_sent = true;
-  this.notification_sent_date = new Date();
-  await this.save();
 };
 
 // Método de clase para crear transacción por check-in
@@ -357,66 +359,72 @@ PointsTransaction.createFromCheckin = async function(checkinData) {
   const { client_id, checkin_id, points_earned, base_points, consecutive_days_bonus, time_bonus, multiplier_applied, checkin_date } = checkinData;
   
   // Obtener balance actual del cliente
-  const Client = sequelize.models.Client;
-  const client = await Client.findByPk(client_id);
-  
-  if (!client) {
-    throw new Error('Cliente no encontrado');
+  if (sequelize.models.Client) {
+    const client = await sequelize.models.Client.findByPk(client_id);
+    
+    if (!client) {
+      throw new Error('Cliente no encontrado');
+    }
+    
+    const transaction = await this.create({
+      client_id,
+      checkin_id,
+      transaction_type: 'earned',
+      source_type: 'checkin',
+      points_earned,
+      points_deducted: 0,
+      balance_before: client.total_points,
+      base_points,
+      consecutive_days_bonus,
+      time_bonus,
+      multiplier_applied,
+      checkin_date,
+      reason: 'Puntos ganados por check-in en el gimnasio',
+      source_reference_id: checkin_id
+    });
+    
+    // Enviar notificación
+    await transaction.sendNotification();
+    
+    return transaction;
   }
   
-  const transaction = await this.create({
-    client_id,
-    checkin_id,
-    transaction_type: 'earned',
-    source_type: 'checkin',
-    points_earned,
-    points_deducted: 0,
-    balance_before: client.total_points,
-    base_points,
-    consecutive_days_bonus,
-    time_bonus,
-    multiplier_applied,
-    checkin_date,
-    reason: 'Puntos ganados por check-in en el gimnasio',
-    source_reference_id: checkin_id
-  });
-  
-  // Enviar notificación
-  await transaction.sendNotification();
-  
-  return transaction;
+  throw new Error('No se pudo crear la transacción');
 };
 
 // Método de clase para crear ajuste manual
 PointsTransaction.createManualAdjustment = async function(clientId, pointsChange, reason, processedByUserId, description = null) {
   // Obtener balance actual del cliente
-  const Client = sequelize.models.Client;
-  const client = await Client.findByPk(clientId);
-  
-  if (!client) {
-    throw new Error('Cliente no encontrado');
+  if (sequelize.models.Client) {
+    const client = await sequelize.models.Client.findByPk(clientId);
+    
+    if (!client) {
+      throw new Error('Cliente no encontrado');
+    }
+    
+    const transaction = await this.create({
+      client_id: clientId,
+      transaction_type: 'adjustment',
+      source_type: 'manual',
+      points_earned: pointsChange > 0 ? pointsChange : 0,
+      points_deducted: pointsChange < 0 ? Math.abs(pointsChange) : 0,
+      balance_before: client.total_points,
+      reason,
+      description,
+      processed_by_user_id: processedByUserId,
+      is_manual: true
+    });
+    
+    // Actualizar balance del cliente
+    await client.update({ total_points: transaction.balance_after });
+    
+    // Enviar notificación
+    await transaction.sendNotification();
+    
+    return transaction;
   }
   
-  const transaction = await this.create({
-    client_id: clientId,
-    transaction_type: 'adjustment',
-    source_type: 'manual',
-    points_earned: pointsChange > 0 ? pointsChange : 0,
-    points_deducted: pointsChange < 0 ? Math.abs(pointsChange) : 0,
-    balance_before: client.total_points,
-    reason,
-    description,
-    processed_by_user_id: processedByUserId,
-    is_manual: true
-  });
-  
-  // Actualizar balance del cliente
-  await client.update({ total_points: transaction.balance_after });
-  
-  // Enviar notificación
-  await transaction.sendNotification();
-  
-  return transaction;
+  throw new Error('No se pudo crear el ajuste');
 };
 
 // Método de clase para obtener balance histórico de un cliente
@@ -492,6 +500,7 @@ PointsTransaction.getTopClientsByPoints = function(period = 30, limit = 10) {
       {
         model: sequelize.models.Client,
         as: 'client',
+        required: false,
         attributes: ['id', 'first_name', 'last_name', 'email']
       }
     ],
@@ -501,27 +510,33 @@ PointsTransaction.getTopClientsByPoints = function(period = 30, limit = 10) {
   });
 };
 
-// Definir asociaciones
+// CORREGIDO: Asociaciones protegidas con verificación de existencia
 PointsTransaction.associate = function(models) {
   // Una transacción de puntos pertenece a un cliente
-  PointsTransaction.belongsTo(models.Client, {
-    foreignKey: 'client_id',
-    as: 'client',
-    onDelete: 'CASCADE'
-  });
+  if (models.Client) {
+    PointsTransaction.belongsTo(models.Client, {
+      foreignKey: 'client_id',
+      as: 'client',
+      onDelete: 'CASCADE'
+    });
+  }
   
   // Una transacción puede estar relacionada con un check-in
-  PointsTransaction.belongsTo(models.ClientCheckin, {
-    foreignKey: 'checkin_id',
-    as: 'checkin',
-    onDelete: 'SET NULL'
-  });
+  if (models.ClientCheckin) {
+    PointsTransaction.belongsTo(models.ClientCheckin, {
+      foreignKey: 'checkin_id',
+      as: 'checkin',
+      onDelete: 'SET NULL'
+    });
+  }
   
   // Una transacción puede ser procesada por un usuario
-  PointsTransaction.belongsTo(models.User, {
-    foreignKey: 'processed_by_user_id',
-    as: 'processedBy'
-  });
+  if (models.User) {
+    PointsTransaction.belongsTo(models.User, {
+      foreignKey: 'processed_by_user_id',
+      as: 'processedBy'
+    });
+  }
   
   // Relación auto-referencial para reversiones
   PointsTransaction.belongsTo(PointsTransaction, {

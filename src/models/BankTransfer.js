@@ -1,5 +1,5 @@
 // Archivo: src/models/BankTransfer.js
-//  creo el modelo para transferencias bancarias con verificación manual
+// CORREGIDO: Modelo para transferencias bancarias con verificación manual
 
 const { DataTypes } = require('sequelize');
 const { sequelize } = require('../config/database');
@@ -308,7 +308,7 @@ BankTransfer.prototype.verify = async function(verifiedByUserId, notes = null) {
   this.verification_notes = notes;
   
   // Marcar el pago relacionado como completado si existe
-  if (this.payment_id) {
+  if (this.payment_id && sequelize.models.Payment) {
     const payment = await sequelize.models.Payment.findByPk(this.payment_id);
     if (payment && payment.status === 'pending') {
       await payment.markAsCompleted(verifiedByUserId, 'Transferencia bancaria verificada');
@@ -330,7 +330,7 @@ BankTransfer.prototype.reject = async function(rejectedByUserId, reason) {
   this.reviewed_date = new Date();
   
   // Marcar el pago relacionado como fallido si existe
-  if (this.payment_id) {
+  if (this.payment_id && sequelize.models.Payment) {
     const payment = await sequelize.models.Payment.findByPk(this.payment_id);
     if (payment) {
       payment.status = 'failed';
@@ -383,11 +383,13 @@ BankTransfer.findPendingVerification = function() {
     include: [
       {
         model: sequelize.models.Client,
-        as: 'client'
+        as: 'client',
+        required: false
       },
       {
         model: sequelize.models.Image,
-        as: 'receiptImage'
+        as: 'receiptImage',
+        required: false
       }
     ],
     order: [['submitted_date', 'ASC']]
@@ -431,40 +433,50 @@ BankTransfer.getVerificationReport = async function(startDate, endDate) {
   });
 };
 
-// Definir asociaciones
+// CORREGIDO: Asociaciones protegidas con verificación de existencia
 BankTransfer.associate = function(models) {
   // Una transferencia pertenece a un cliente
-  BankTransfer.belongsTo(models.Client, {
-    foreignKey: 'client_id',
-    as: 'client',
-    onDelete: 'CASCADE'
-  });
+  if (models.Client) {
+    BankTransfer.belongsTo(models.Client, {
+      foreignKey: 'client_id',
+      as: 'client',
+      onDelete: 'CASCADE'
+    });
+  }
   
   // Una transferencia puede estar relacionada con un pago
-  BankTransfer.belongsTo(models.Payment, {
-    foreignKey: 'payment_id',
-    as: 'payment',
-    onDelete: 'SET NULL'
-  });
+  if (models.Payment) {
+    BankTransfer.belongsTo(models.Payment, {
+      foreignKey: 'payment_id',
+      as: 'payment',
+      onDelete: 'SET NULL'
+    });
+  }
   
   // Una transferencia tiene una imagen de comprobante
-  BankTransfer.belongsTo(models.Image, {
-    foreignKey: 'receipt_image_id',
-    as: 'receiptImage',
-    onDelete: 'SET NULL'
-  });
+  if (models.Image) {
+    BankTransfer.belongsTo(models.Image, {
+      foreignKey: 'receipt_image_id',
+      as: 'receiptImage',
+      onDelete: 'SET NULL'
+    });
+  }
   
   // Una transferencia fue verificada por un usuario
-  BankTransfer.belongsTo(models.User, {
-    foreignKey: 'verified_by_user_id',
-    as: 'verifiedBy'
-  });
+  if (models.User) {
+    BankTransfer.belongsTo(models.User, {
+      foreignKey: 'verified_by_user_id',
+      as: 'verifiedBy'
+    });
+  }
   
   // Una transferencia puede tener pagos relacionados
-  BankTransfer.hasMany(models.Payment, {
-    foreignKey: 'bank_transfer_id',
-    as: 'relatedPayments'
-  });
+  if (models.Payment) {
+    BankTransfer.hasMany(models.Payment, {
+      foreignKey: 'bank_transfer_id',
+      as: 'relatedPayments'
+    });
+  }
 };
 
 module.exports = BankTransfer;

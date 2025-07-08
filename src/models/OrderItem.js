@@ -1,5 +1,5 @@
 // Archivo: src/models/OrderItem.js
-// creo el modelo para los ítems específicos de cada orden
+// CORREGIDO: Modelo para los ítems específicos de cada orden
 
 const { DataTypes } = require('sequelize');
 const { sequelize } = require('../config/database');
@@ -276,23 +276,24 @@ OrderItem.beforeSave(async (orderItem) => {
   // Si es una creación nueva, copiar información del producto
   if (orderItem.isNewRecord && orderItem.product_id) {
     try {
-      const Product = sequelize.models.Product;
-      const product = await Product.findByPk(orderItem.product_id);
-      
-      if (product) {
-        orderItem.product_name = product.name;
-        orderItem.product_sku = product.sku;
-        orderItem.product_description = product.short_description || product.description;
-        orderItem.has_qr_code = product.has_qr_code;
+      if (sequelize.models.Product) {
+        const product = await sequelize.models.Product.findByPk(orderItem.product_id);
         
-        // Determinar si es retornable basado en el tipo de producto
-        orderItem.is_returnable = !product.is_digital && product.category !== 'supplements_opened';
-        
-        // Calcular fecha límite de devolución (30 días)
-        if (orderItem.is_returnable) {
-          const returnDate = new Date();
-          returnDate.setDate(returnDate.getDate() + 30);
-          orderItem.return_deadline = returnDate.toISOString().split('T')[0];
+        if (product) {
+          orderItem.product_name = product.name;
+          orderItem.product_sku = product.sku;
+          orderItem.product_description = product.short_description || product.description;
+          orderItem.has_qr_code = product.has_qr_code;
+          
+          // Determinar si es retornable basado en el tipo de producto
+          orderItem.is_returnable = !product.is_digital && product.category !== 'supplements_opened';
+          
+          // Calcular fecha límite de devolución (30 días)
+          if (orderItem.is_returnable) {
+            const returnDate = new Date();
+            returnDate.setDate(returnDate.getDate() + 30);
+            orderItem.return_deadline = returnDate.toISOString().split('T')[0];
+          }
         }
       }
     } catch (error) {
@@ -316,40 +317,42 @@ OrderItem.prototype.reserveStock = async function() {
     throw new Error('El stock ya está reservado para este ítem');
   }
   
-  const Product = sequelize.models.Product;
-  const product = await Product.findByPk(this.product_id);
-  
-  if (!product) {
-    throw new Error('Producto no encontrado');
+  if (sequelize.models.Product) {
+    const product = await sequelize.models.Product.findByPk(this.product_id);
+    
+    if (!product) {
+      throw new Error('Producto no encontrado');
+    }
+    
+    if (product.track_inventory && product.stock_quantity < this.quantity) {
+      throw new Error('Stock insuficiente para reservar');
+    }
+    
+    if (product.track_inventory) {
+      await product.updateStock(this.quantity, 'subtract', `Reservado para orden ${this.order_id}`);
+    }
+    
+    this.reserved_stock = true;
+    this.stock_reserved_date = new Date();
+    await this.save();
   }
-  
-  if (product.track_inventory && product.stock_quantity < this.quantity) {
-    throw new Error('Stock insuficiente para reservar');
-  }
-  
-  if (product.track_inventory) {
-    await product.updateStock(this.quantity, 'subtract', `Reservado para orden ${this.order_id}`);
-  }
-  
-  this.reserved_stock = true;
-  this.stock_reserved_date = new Date();
-  await this.save();
 };
 
 // Método de instancia para liberar stock reservado
 OrderItem.prototype.releaseStock = async function() {
   if (!this.reserved_stock) return;
   
-  const Product = sequelize.models.Product;
-  const product = await Product.findByPk(this.product_id);
-  
-  if (product && product.track_inventory) {
-    await product.updateStock(this.quantity, 'add', `Stock liberado de orden ${this.order_id}`);
+  if (sequelize.models.Product) {
+    const product = await sequelize.models.Product.findByPk(this.product_id);
+    
+    if (product && product.track_inventory) {
+      await product.updateStock(this.quantity, 'add', `Stock liberado de orden ${this.order_id}`);
+    }
+    
+    this.reserved_stock = false;
+    this.stock_reserved_date = null;
+    await this.save();
   }
-  
-  this.reserved_stock = false;
-  this.stock_reserved_date = null;
-  await this.save();
 };
 
 // Método de instancia para asignar stock definitivamente
@@ -366,24 +369,23 @@ OrderItem.prototype.allocateStock = async function() {
 OrderItem.prototype.generateQRCodes = async function() {
   if (!this.has_qr_code || this.qr_code_generated) return;
   
-  const QRCode = sequelize.models.QRCode;
-  if (!QRCode) return;
-  
-  // Generar un código QR por cada unidad del producto
-  for (let i = 0; i < this.quantity; i++) {
-    await QRCode.create({
-      product_id: this.product_id,
-      order_id: this.order_id,
-      order_item_id: this.id,
-      client_id: null, // Se asignará cuando se entregue
-      code_type: 'product',
-      is_active: true
-    });
+  if (sequelize.models.QRCode) {
+    // Generar un código QR por cada unidad del producto
+    for (let i = 0; i < this.quantity; i++) {
+      await sequelize.models.QRCode.create({
+        product_id: this.product_id,
+        order_id: this.order_id,
+        order_item_id: this.id,
+        client_id: null, // Se asignará cuando se entregue
+        code_type: 'product',
+        is_active: true
+      });
+    }
+    
+    this.qr_code_generated = true;
+    this.qr_codes_count = this.quantity;
+    await this.save();
   }
-  
-  this.qr_code_generated = true;
-  this.qr_codes_count = this.quantity;
-  await this.save();
 };
 
 // Método de instancia para marcar como entregado
@@ -392,10 +394,11 @@ OrderItem.prototype.markAsDelivered = async function() {
   this.actual_delivery_date = new Date().toISOString().split('T')[0];
   
   // Actualizar estadísticas del producto
-  const Product = sequelize.models.Product;
-  const product = await Product.findByPk(this.product_id);
-  if (product) {
-    await product.updateSalesStats(this.quantity, this.total_price);
+  if (sequelize.models.Product) {
+    const product = await sequelize.models.Product.findByPk(this.product_id);
+    if (product) {
+      await product.updateSalesStats(this.quantity, this.total_price);
+    }
   }
   
   await this.save();
@@ -403,33 +406,40 @@ OrderItem.prototype.markAsDelivered = async function() {
 
 // Método de instancia para actualizar totales de la orden
 OrderItem.prototype.updateOrderTotals = async function() {
-  const Order = sequelize.models.Order;
-  const order = await Order.findByPk(this.order_id, {
-    include: [{
-      model: OrderItem,
-      as: 'orderItems'
-    }]
-  });
-  
-  if (order) {
-    const totals = order.calculateTotals();
-    await order.update(totals);
+  if (sequelize.models.Order) {
+    const order = await sequelize.models.Order.findByPk(this.order_id, {
+      include: [{
+        model: OrderItem,
+        as: 'orderItems'
+      }]
+    });
+    
+    if (order) {
+      const totals = order.calculateTotals();
+      await order.update(totals);
+    }
   }
 };
 
 // Método de instancia para verificar disponibilidad
 OrderItem.prototype.checkAvailability = async function() {
-  const Product = sequelize.models.Product;
-  const product = await Product.findByPk(this.product_id);
-  
-  if (!product) {
-    return {
-      available: false,
-      message: 'Producto no encontrado'
-    };
+  if (sequelize.models.Product) {
+    const product = await sequelize.models.Product.findByPk(this.product_id);
+    
+    if (!product) {
+      return {
+        available: false,
+        message: 'Producto no encontrado'
+      };
+    }
+    
+    return product.checkAvailability(this.delivery_mode, this.quantity);
   }
   
-  return product.checkAvailability(this.delivery_mode, this.quantity);
+  return {
+    available: false,
+    message: 'No se pudo verificar disponibilidad'
+  };
 };
 
 // Método de clase para buscar ítems que necesitan QR
@@ -443,11 +453,13 @@ OrderItem.findNeedingQRGeneration = function() {
     include: [
       {
         model: sequelize.models.Product,
-        as: 'product'
+        as: 'product',
+        required: false
       },
       {
         model: sequelize.models.Order,
-        as: 'order'
+        as: 'order',
+        required: false
       }
     ]
   });
@@ -462,14 +474,17 @@ OrderItem.findByStatus = function(status) {
     include: [
       {
         model: sequelize.models.Product,
-        as: 'product'
+        as: 'product',
+        required: false
       },
       {
         model: sequelize.models.Order,
         as: 'order',
+        required: false,
         include: [{
           model: sequelize.models.Client,
-          as: 'client'
+          as: 'client',
+          required: false
         }]
       }
     ],
@@ -477,27 +492,33 @@ OrderItem.findByStatus = function(status) {
   });
 };
 
-// Definir asociaciones
+// CORREGIDO: Asociaciones protegidas con verificación de existencia
 OrderItem.associate = function(models) {
   // Un ítem pertenece a una orden
-  OrderItem.belongsTo(models.Order, {
-    foreignKey: 'order_id',
-    as: 'order',
-    onDelete: 'CASCADE'
-  });
+  if (models.Order) {
+    OrderItem.belongsTo(models.Order, {
+      foreignKey: 'order_id',
+      as: 'order',
+      onDelete: 'CASCADE'
+    });
+  }
   
   // Un ítem corresponde a un producto
-  OrderItem.belongsTo(models.Product, {
-    foreignKey: 'product_id',
-    as: 'product',
-    onDelete: 'RESTRICT'
-  });
+  if (models.Product) {
+    OrderItem.belongsTo(models.Product, {
+      foreignKey: 'product_id',
+      as: 'product',
+      onDelete: 'RESTRICT'
+    });
+  }
   
   // Un ítem puede tener muchos códigos QR
-  OrderItem.hasMany(models.QRCode, {
-    foreignKey: 'order_item_id',
-    as: 'qrCodes'
-  });
+  if (models.QRCode) {
+    OrderItem.hasMany(models.QRCode, {
+      foreignKey: 'order_item_id',
+      as: 'qrCodes'
+    });
+  }
 };
 
 module.exports = OrderItem;

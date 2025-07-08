@@ -467,8 +467,7 @@ Order.prototype.isExpired = function() {
 
 // Método de instancia para enviar notificación de estado
 Order.prototype.sendStatusNotification = async function(reason = null) {
-  const Notification = sequelize.models.Notification;
-  if (!Notification) return;
+  if (!sequelize.models.Notification) return;
   
   const statusMessages = {
     'confirmed': 'Tu orden ha sido confirmada y está siendo procesada',
@@ -481,7 +480,7 @@ Order.prototype.sendStatusNotification = async function(reason = null) {
   
   const message = statusMessages[this.status] || `Estado de tu orden actualizado: ${this.status}`;
   
-  await Notification.create({
+  await sequelize.models.Notification.create({
     client_id: this.client_id,
     title: `Orden ${this.order_number}`,
     message: message,
@@ -503,14 +502,17 @@ Order.findByStatusAndMode = function(status, deliveryMode = null) {
     include: [
       {
         model: sequelize.models.Client,
-        as: 'client'
+        as: 'client',
+        required: false
       },
       {
         model: sequelize.models.OrderItem,
         as: 'orderItems',
+        required: false,
         include: [{
           model: sequelize.models.Product,
-          as: 'product'
+          as: 'product',
+          required: false
         }]
       }
     ],

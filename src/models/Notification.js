@@ -337,9 +337,8 @@ const Notification = sequelize.define('Notification', {
 Notification.beforeCreate(async (notification) => {
   // Si no se especificaron canales, obtener preferencias del cliente
   if (!notification.channels || notification.channels.length === 0) {
-    const ClientPreferences = sequelize.models.ClientPreferences;
-    if (ClientPreferences) {
-      const preferences = await ClientPreferences.findOne({
+    if (sequelize.models.ClientPreferences) {
+      const preferences = await sequelize.models.ClientPreferences.findOne({
         where: { client_id: notification.client_id }
       });
       
@@ -365,10 +364,9 @@ Notification.beforeCreate(async (notification) => {
 
 // Método de instancia para verificar preferencias por tipo
 Notification.prototype.checkTypePreferences = async function() {
-  const ClientPreferences = sequelize.models.ClientPreferences;
-  if (!ClientPreferences) return;
+  if (!sequelize.models.ClientPreferences) return;
   
-  const preferences = await ClientPreferences.findOne({
+  const preferences = await sequelize.models.ClientPreferences.findOne({
     where: { client_id: this.client_id }
   });
   
@@ -526,9 +524,11 @@ Notification.findPendingToSend = function() {
       {
         model: sequelize.models.Client,
         as: 'client',
+        required: false,
         include: [{
           model: sequelize.models.ClientPreferences,
-          as: 'preferences'
+          as: 'preferences',
+          required: false
         }]
       }
     ],

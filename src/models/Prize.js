@@ -1,5 +1,5 @@
 // Archivo: src/models/Prize.js
-//  creo el modelo para el catálogo de premios configurables
+// CORREGIDO: Modelo para el catálogo de premios configurables
 
 const { DataTypes } = require('sequelize');
 const { sequelize } = require('../config/database');
@@ -359,12 +359,11 @@ Prize.prototype.checkLimits = async function() {
   const now = new Date();
   
   // Verificar límite diario
-  if (this.max_per_day) {
+  if (this.max_per_day && sequelize.models.PrizeWinning) {
     const todayStart = new Date(now);
     todayStart.setHours(0, 0, 0, 0);
     
-    const PrizeWinning = sequelize.models.PrizeWinning;
-    const todayCount = await PrizeWinning.count({
+    const todayCount = await sequelize.models.PrizeWinning.count({
       where: {
         prize_id: this.id,
         created_at: {
@@ -379,13 +378,12 @@ Prize.prototype.checkLimits = async function() {
   }
   
   // Verificar límite semanal
-  if (this.max_per_week) {
+  if (this.max_per_week && sequelize.models.PrizeWinning) {
     const weekStart = new Date(now);
     weekStart.setDate(weekStart.getDate() - weekStart.getDay());
     weekStart.setHours(0, 0, 0, 0);
     
-    const PrizeWinning = sequelize.models.PrizeWinning;
-    const weekCount = await PrizeWinning.count({
+    const weekCount = await sequelize.models.PrizeWinning.count({
       where: {
         prize_id: this.id,
         created_at: {
@@ -404,14 +402,17 @@ Prize.prototype.checkLimits = async function() {
 
 // Método de instancia para verificar elegibilidad del cliente
 Prize.prototype.checkClientEligibility = async function(clientId) {
-  const Client = sequelize.models.Client;
-  const client = await Client.findByPk(clientId, {
-    include: [{
+  if (!sequelize.models.Client) {
+    return { eligible: false, reason: 'Modelo Cliente no disponible' };
+  }
+
+  const client = await sequelize.models.Client.findByPk(clientId, {
+    include: sequelize.models.ClientMembership ? [{
       model: sequelize.models.ClientMembership,
       as: 'memberships',
       where: { status: 'active' },
       required: false
-    }]
+    }] : []
   });
   
   if (!client) {
@@ -440,9 +441,8 @@ Prize.prototype.checkClientEligibility = async function(clientId) {
   }
   
   // Verificar límite por cliente
-  if (this.max_per_client) {
-    const PrizeWinning = sequelize.models.PrizeWinning;
-    const clientCount = await PrizeWinning.count({
+  if (this.max_per_client && sequelize.models.PrizeWinning) {
+    const clientCount = await sequelize.models.PrizeWinning.count({
       where: {
         client_id: clientId,
         prize_id: this.id
@@ -463,8 +463,11 @@ Prize.prototype.applyToClient = async function(clientId) {
     return { applied: false, reason: 'Premio requiere canje manual' };
   }
   
-  const Client = sequelize.models.Client;
-  const client = await Client.findByPk(clientId);
+  if (!sequelize.models.Client) {
+    return { applied: false, reason: 'Modelo Cliente no disponible' };
+  }
+
+  const client = await sequelize.models.Client.findByPk(clientId);
   
   if (!client) {
     throw new Error('Cliente no encontrado');
@@ -499,8 +502,9 @@ Prize.prototype.applyToClient = async function(clientId) {
 
 // Método para aplicar días gratis de membresía
 Prize.prototype.applyMembershipDays = async function(client) {
-  const ClientMembership = sequelize.models.ClientMembership;
-  const activeMembership = await ClientMembership.findOne({
+  if (!sequelize.models.ClientMembership) return;
+
+  const activeMembership = await sequelize.models.ClientMembership.findOne({
     where: {
       client_id: client.id,
       status: 'active'
@@ -521,31 +525,29 @@ Prize.prototype.applyFreeProduct = async function(client) {
   if (!this.free_product_id) return;
   
   // Crear una orden especial para el producto gratuito
-  const Order = sequelize.models.Order;
-  const OrderItem = sequelize.models.OrderItem;
-  const Product = sequelize.models.Product;
-  
-  const product = await Product.findByPk(this.free_product_id);
-  if (!product) return;
-  
-  const order = await Order.create({
-    client_id: client.id,
-    delivery_mode: 'pickup',
-    subtotal: 0,
-    total_amount: 0,
-    status: 'confirmed',
-    payment_status: 'paid'
-  });
-  
-  await OrderItem.create({
-    order_id: order.id,
-    product_id: this.free_product_id,
-    quantity: this.product_quantity,
-    unit_price: 0,
-    total_price: 0,
-    delivery_mode: 'pickup',
-    item_status: 'confirmed'
-  });
+  if (sequelize.models.Order && sequelize.models.OrderItem && sequelize.models.Product) {
+    const product = await sequelize.models.Product.findByPk(this.free_product_id);
+    if (!product) return;
+    
+    const order = await sequelize.models.Order.create({
+      client_id: client.id,
+      delivery_mode: 'pickup',
+      subtotal: 0,
+      total_amount: 0,
+      status: 'confirmed',
+      payment_status: 'paid'
+    });
+    
+    await sequelize.models.OrderItem.create({
+      order_id: order.id,
+      product_id: this.free_product_id,
+      quantity: this.product_quantity,
+      unit_price: 0,
+      total_price: 0,
+      delivery_mode: 'pickup',
+      item_status: 'confirmed'
+    });
+  }
 };
 
 // Método de instancia para incrementar contadores
@@ -590,39 +592,49 @@ Prize.findAvailable = function() {
   });
 };
 
-// Definir asociaciones
+// CORREGIDO: Asociaciones protegidas con verificación de existencia
 Prize.associate = function(models) {
   // Un premio puede tener un producto gratuito asociado
-  Prize.belongsTo(models.Product, {
-    foreignKey: 'free_product_id',
-    as: 'freeProduct',
-    onDelete: 'SET NULL'
-  });
+  if (models.Product) {
+    Prize.belongsTo(models.Product, {
+      foreignKey: 'free_product_id',
+      as: 'freeProduct',
+      onDelete: 'SET NULL'
+    });
+  }
   
   // Un premio puede tener una imagen
-  Prize.belongsTo(models.Image, {
-    foreignKey: 'image_id',
-    as: 'image',
-    onDelete: 'SET NULL'
-  });
+  if (models.Image) {
+    Prize.belongsTo(models.Image, {
+      foreignKey: 'image_id',
+      as: 'image',
+      onDelete: 'SET NULL'
+    });
+  }
   
   // Un premio fue creado por un usuario
-  Prize.belongsTo(models.User, {
-    foreignKey: 'created_by_user_id',
-    as: 'createdBy'
-  });
+  if (models.User) {
+    Prize.belongsTo(models.User, {
+      foreignKey: 'created_by_user_id',
+      as: 'createdBy'
+    });
+  }
   
   // Un premio puede ser ganado muchas veces
-  Prize.hasMany(models.PrizeWinning, {
-    foreignKey: 'prize_id',
-    as: 'winnings'
-  });
+  if (models.PrizeWinning) {
+    Prize.hasMany(models.PrizeWinning, {
+      foreignKey: 'prize_id',
+      as: 'winnings'
+    });
+  }
   
   // Un premio puede ser usado como premio fijo en códigos QR
-  Prize.hasMany(models.QRCode, {
-    foreignKey: 'fixed_prize_id',
-    as: 'qrCodes'
-  });
+  if (models.QRCode) {
+    Prize.hasMany(models.QRCode, {
+      foreignKey: 'fixed_prize_id',
+      as: 'qrCodes'
+    });
+  }
 };
 
 module.exports = Prize;
