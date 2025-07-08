@@ -1,5 +1,5 @@
 // Archivo: src/models/Image.js
-//creo el modelo para almacenar imágenes directamente en PostgreSQL
+// Modelo CORREGIDO para almacenar imágenes en PostgreSQL sin problemas de tipos TEXT
 
 const { DataTypes } = require('sequelize');
 const { sequelize } = require('../config/database');
@@ -44,9 +44,9 @@ const Image = sequelize.define('Image', {
     },
     comment: 'Extensión del archivo'
   },
-  // Almacenamiento de la imagen en base64
+  // CORREGIDO: Usar TEXT sin longitud para PostgreSQL
   image_data: {
-    type: DataTypes.TEXT('long'), // Para MySQL, en PostgreSQL será TEXT
+    type: DataTypes.TEXT,  // Sin parámetros de longitud
     allowNull: false,
     comment: 'Datos de la imagen en formato base64'
   },
@@ -70,14 +70,14 @@ const Image = sequelize.define('Image', {
     allowNull: true,
     comment: 'Alto de la imagen en píxeles'
   },
-  // Diferentes versiones/tamaños de la imagen
+  // CORREGIDO: Diferentes versiones sin parámetros de longitud
   thumbnail_data: {
-    type: DataTypes.TEXT('medium'),
+    type: DataTypes.TEXT,  // Sin parámetros de longitud
     allowNull: true,
     comment: 'Thumbnail de la imagen en base64 (150x150)'
   },
   medium_data: {
-    type: DataTypes.TEXT('long'),
+    type: DataTypes.TEXT,  // Sin parámetros de longitud
     allowNull: true,
     comment: 'Versión mediana de la imagen en base64 (500x500)'
   },
@@ -472,53 +472,69 @@ Image.findByUsageType = function(usageType, options = {}) {
 // Definir asociaciones
 Image.associate = function(models) {
   // Una imagen puede ser subida por un usuario
-  Image.belongsTo(models.User, {
-    foreignKey: 'uploaded_by_user_id',
-    as: 'uploadedByUser'
-  });
+  if (models.User) {
+    Image.belongsTo(models.User, {
+      foreignKey: 'uploaded_by_user_id',
+      as: 'uploadedByUser'
+    });
+  }
   
   // Una imagen puede ser subida por un cliente
-  Image.belongsTo(models.Client, {
-    foreignKey: 'uploaded_by_client_id',
-    as: 'uploadedByClient'
-  });
+  if (models.Client) {
+    Image.belongsTo(models.Client, {
+      foreignKey: 'uploaded_by_client_id',
+      as: 'uploadedByClient'
+    });
+  }
   
   // Una imagen puede pertenecer a un producto
-  Image.belongsTo(models.Product, {
-    foreignKey: 'product_id',
-    as: 'product',
-    onDelete: 'CASCADE'
-  });
+  if (models.Product) {
+    Image.belongsTo(models.Product, {
+      foreignKey: 'product_id',
+      as: 'product',
+      onDelete: 'CASCADE'
+    });
+  }
   
   // Una imagen puede ser usada como perfil de usuario
-  Image.hasMany(models.User, {
-    foreignKey: 'profile_image_id',
-    as: 'userProfiles'
-  });
+  if (models.User) {
+    Image.hasMany(models.User, {
+      foreignKey: 'profile_image_id',
+      as: 'userProfiles'
+    });
+  }
   
   // Una imagen puede ser usada como perfil de cliente
-  Image.hasMany(models.Client, {
-    foreignKey: 'profile_image_id',
-    as: 'clientProfiles'
-  });
+  if (models.Client) {
+    Image.hasMany(models.Client, {
+      foreignKey: 'profile_image_id',
+      as: 'clientProfiles'
+    });
+  }
   
   // Una imagen puede ser usada como imagen de categoría
-  Image.hasMany(models.ProductCategory, {
-    foreignKey: 'image_id',
-    as: 'categories'
-  });
+  if (models.ProductCategory) {
+    Image.hasMany(models.ProductCategory, {
+      foreignKey: 'image_id',
+      as: 'categories'
+    });
+  }
   
   // Una imagen puede ser usada como imagen de premio
-  Image.hasMany(models.Prize, {
-    foreignKey: 'image_id',
-    as: 'prizes'
-  });
+  if (models.Prize) {
+    Image.hasMany(models.Prize, {
+      foreignKey: 'image_id',
+      as: 'prizes'
+    });
+  }
   
   // Una imagen puede ser un comprobante de transferencia
-  Image.hasMany(models.BankTransfer, {
-    foreignKey: 'receipt_image_id',
-    as: 'bankTransferReceipts'
-  });
+  if (models.BankTransfer) {
+    Image.hasMany(models.BankTransfer, {
+      foreignKey: 'receipt_image_id',
+      as: 'bankTransferReceipts'
+    });
+  }
 };
 
 module.exports = Image;
