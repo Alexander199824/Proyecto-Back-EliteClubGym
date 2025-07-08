@@ -1,5 +1,5 @@
 // Archivo: src/models/MembershipType.js
-//creo el modelo para los tipos de membresías configurables
+// Modelo CORREGIDO para los tipos de membresías configurables
 
 const { DataTypes } = require('sequelize');
 const { sequelize } = require('../config/database');
@@ -14,7 +14,7 @@ const MembershipType = sequelize.define('MembershipType', {
   name: {
     type: DataTypes.STRING(100),
     allowNull: false,
-    unique: true,
+    // CORREGIDO: Removido unique: true de aquí
     validate: {
       notEmpty: {
         msg: 'El nombre de la membresía es requerido'
@@ -239,6 +239,7 @@ const MembershipType = sequelize.define('MembershipType', {
   timestamps: true,
   paranoid: true, // Soft delete
   indexes: [
+    // CORREGIDO: Movido unique constraint a indexes
     {
       unique: true,
       fields: ['name']
@@ -343,19 +344,23 @@ MembershipType.findFeatured = function() {
   });
 };
 
-// Definir asociaciones
+// CORREGIDO: Asociaciones protegidas con verificación de existencia
 MembershipType.associate = function(models) {
   // Un tipo de membresía puede tener muchas asignaciones a clientes
-  MembershipType.hasMany(models.ClientMembership, {
-    foreignKey: 'membership_type_id',
-    as: 'clientMemberships'
-  });
+  if (models.ClientMembership) {
+    MembershipType.hasMany(models.ClientMembership, {
+      foreignKey: 'membership_type_id',
+      as: 'clientMemberships'
+    });
+  }
   
   // Un tipo de membresía puede tener muchos pagos relacionados
-  MembershipType.hasMany(models.Payment, {
-    foreignKey: 'membership_type_id',
-    as: 'payments'
-  });
+  if (models.Payment) {
+    MembershipType.hasMany(models.Payment, {
+      foreignKey: 'membership_type_id',
+      as: 'payments'
+    });
+  }
 };
 
 module.exports = MembershipType;

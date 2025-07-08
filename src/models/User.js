@@ -1,5 +1,5 @@
 // Archivo: src/models/User.js
-// Yo como desarrollador creo el modelo para administradores y personal del gimnasio
+// Modelo CORREGIDO para administradores y personal del gimnasio
 
 const { DataTypes } = require('sequelize');
 const bcrypt = require('bcryptjs');
@@ -15,7 +15,7 @@ const User = sequelize.define('User', {
   email: {
     type: DataTypes.STRING(100),
     allowNull: false,
-    unique: true,
+    // CORREGIDO: Removido unique: true de aquí
     validate: {
       isEmail: {
         msg: 'Debe ser un email válido'
@@ -121,6 +121,7 @@ const User = sequelize.define('User', {
   timestamps: true,
   paranoid: true, // Soft delete
   indexes: [
+    // CORREGIDO: Movido unique constraint a indexes
     {
       unique: true,
       fields: ['email']
@@ -202,104 +203,136 @@ User.findActiveByEmail = function(email) {
   });
 };
 
-// Definir asociaciones - CORREGIDAS
+// CORREGIDO: Asociaciones protegidas con verificación de existencia
 User.associate = function(models) {
   // Un usuario puede tener una imagen de perfil
-  User.belongsTo(models.Image, {
-    foreignKey: 'profile_image_id',
-    as: 'profileImage',
-    onDelete: 'SET NULL'
-  });
+  if (models.Image) {
+    User.belongsTo(models.Image, {
+      foreignKey: 'profile_image_id',
+      as: 'profileImage',
+      onDelete: 'SET NULL'
+    });
+  }
   
   // Un usuario puede crear muchas notificaciones
-  User.hasMany(models.Notification, {
-    foreignKey: 'created_by_user_id',
-    as: 'createdNotifications'
-  });
+  if (models.Notification) {
+    User.hasMany(models.Notification, {
+      foreignKey: 'created_by_user_id',
+      as: 'createdNotifications'
+    });
+  }
   
   // Un usuario puede procesar muchas transferencias bancarias
-  User.hasMany(models.BankTransfer, {
-    foreignKey: 'verified_by_user_id',
-    as: 'verifiedBankTransfers'
-  });
+  if (models.BankTransfer) {
+    User.hasMany(models.BankTransfer, {
+      foreignKey: 'verified_by_user_id',
+      as: 'verifiedBankTransfers'
+    });
+  }
   
   // Un usuario puede crear muchas membresías
-  User.hasMany(models.ClientMembership, {
-    foreignKey: 'created_by_user_id',
-    as: 'createdMemberships'
-  });
+  if (models.ClientMembership) {
+    User.hasMany(models.ClientMembership, {
+      foreignKey: 'created_by_user_id',
+      as: 'createdMemberships'
+    });
+  }
   
   // Un usuario puede procesar muchos pagos
-  User.hasMany(models.Payment, {
-    foreignKey: 'processed_by_user_id',
-    as: 'processedPayments'
-  });
+  if (models.Payment) {
+    User.hasMany(models.Payment, {
+      foreignKey: 'processed_by_user_id',
+      as: 'processedPayments'
+    });
+  }
   
   // Un usuario puede procesar reembolsos
-  User.hasMany(models.Payment, {
-    foreignKey: 'refunded_by_user_id',
-    as: 'refundedPayments'
-  });
+  if (models.Payment) {
+    User.hasMany(models.Payment, {
+      foreignKey: 'refunded_by_user_id',
+      as: 'refundedPayments'
+    });
+  }
   
   // Un usuario puede reconciliar pagos
-  User.hasMany(models.Payment, {
-    foreignKey: 'reconciled_by_user_id',
-    as: 'reconciledPayments'
-  });
+  if (models.Payment) {
+    User.hasMany(models.Payment, {
+      foreignKey: 'reconciled_by_user_id',
+      as: 'reconciledPayments'
+    });
+  }
   
   // Un usuario puede procesar transacciones de puntos
-  User.hasMany(models.PointsTransaction, {
-    foreignKey: 'processed_by_user_id',
-    as: 'processedPointsTransactions'
-  });
+  if (models.PointsTransaction) {
+    User.hasMany(models.PointsTransaction, {
+      foreignKey: 'processed_by_user_id',
+      as: 'processedPointsTransactions'
+    });
+  }
   
   // Un usuario puede procesar premios ganados
-  User.hasMany(models.PrizeWinning, {
-    foreignKey: 'processed_by_user_id',
-    as: 'processedPrizeWinnings'
-  });
+  if (models.PrizeWinning) {
+    User.hasMany(models.PrizeWinning, {
+      foreignKey: 'processed_by_user_id',
+      as: 'processedPrizeWinnings'
+    });
+  }
   
   // Un usuario puede verificar premios ganados
-  User.hasMany(models.PrizeWinning, {
-    foreignKey: 'verified_by_user_id',
-    as: 'verifiedPrizeWinnings'
-  });
+  if (models.PrizeWinning) {
+    User.hasMany(models.PrizeWinning, {
+      foreignKey: 'verified_by_user_id',
+      as: 'verifiedPrizeWinnings'
+    });
+  }
   
   // Un usuario puede cancelar premios ganados
-  User.hasMany(models.PrizeWinning, {
-    foreignKey: 'cancelled_by_user_id',
-    as: 'cancelledPrizeWinnings'
-  });
+  if (models.PrizeWinning) {
+    User.hasMany(models.PrizeWinning, {
+      foreignKey: 'cancelled_by_user_id',
+      as: 'cancelledPrizeWinnings'
+    });
+  }
   
   // Un usuario puede crear premios
-  User.hasMany(models.Prize, {
-    foreignKey: 'created_by_user_id',
-    as: 'createdPrizes'
-  });
+  if (models.Prize) {
+    User.hasMany(models.Prize, {
+      foreignKey: 'created_by_user_id',
+      as: 'createdPrizes'
+    });
+  }
   
   // Un usuario puede crear códigos QR
-  User.hasMany(models.QRCode, {
-    foreignKey: 'created_by_user_id',
-    as: 'createdQRCodes'
-  });
+  if (models.QRCode) {
+    User.hasMany(models.QRCode, {
+      foreignKey: 'created_by_user_id',
+      as: 'createdQRCodes'
+    });
+  }
   
   // Un usuario puede crear ruletas
-  User.hasMany(models.Roulette, {
-    foreignKey: 'created_by_user_id',
-    as: 'createdRoulettes'
-  });
+  if (models.Roulette) {
+    User.hasMany(models.Roulette, {
+      foreignKey: 'created_by_user_id',
+      as: 'createdRoulettes'
+    });
+  }
   
   // Un usuario puede procesar órdenes
-  User.hasMany(models.Order, {
-    foreignKey: 'processed_by_user_id',
-    as: 'processedOrders'
-  });
+  if (models.Order) {
+    User.hasMany(models.Order, {
+      foreignKey: 'processed_by_user_id',
+      as: 'processedOrders'
+    });
+  }
   
   // Un usuario puede validar check-ins
-  User.hasMany(models.ClientCheckin, {
-    foreignKey: 'validated_by_user_id',
-    as: 'validatedCheckins'
-  });
+  if (models.ClientCheckin) {
+    User.hasMany(models.ClientCheckin, {
+      foreignKey: 'validated_by_user_id',
+      as: 'validatedCheckins'
+    });
+  }
 };
 
 module.exports = User;

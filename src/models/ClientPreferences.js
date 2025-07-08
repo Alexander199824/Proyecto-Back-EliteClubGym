@@ -1,5 +1,5 @@
 // Archivo: src/models/ClientPreferences.js
-//  creo el modelo para las preferencias de notificaciones de los clientes
+// Modelo CORREGIDO para las preferencias de notificaciones de los clientes
 
 const { DataTypes } = require('sequelize');
 const { sequelize } = require('../config/database');
@@ -14,7 +14,7 @@ const ClientPreferences = sequelize.define('ClientPreferences', {
   client_id: {
     type: DataTypes.UUID,
     allowNull: false,
-    unique: true,
+    // CORREGIDO: Removido unique: true de aquí
     references: {
       model: 'clients',
       key: 'id'
@@ -205,6 +205,7 @@ const ClientPreferences = sequelize.define('ClientPreferences', {
   tableName: 'client_preferences',
   timestamps: true,
   indexes: [
+    // CORREGIDO: Movido unique constraint a indexes
     {
       unique: true,
       fields: ['client_id']
@@ -289,14 +290,16 @@ ClientPreferences.createDefault = async function(clientId) {
   });
 };
 
-// Definir asociaciones
+// CORREGIDO: Asociaciones protegidas con verificación de existencia
 ClientPreferences.associate = function(models) {
   // Las preferencias pertenecen a un cliente
-  ClientPreferences.belongsTo(models.Client, {
-    foreignKey: 'client_id',
-    as: 'client',
-    onDelete: 'CASCADE'
-  });
+  if (models.Client) {
+    ClientPreferences.belongsTo(models.Client, {
+      foreignKey: 'client_id',
+      as: 'client',
+      onDelete: 'CASCADE'
+    });
+  }
 };
 
 module.exports = ClientPreferences;

@@ -1,5 +1,5 @@
 // Archivo: src/models/Client.js
-//  creo el modelo para los clientes/miembros del gimnasio
+// Modelo CORREGIDO - Movido unique a indexes y protegido asociaciones
 
 const { DataTypes } = require('sequelize');
 const bcrypt = require('bcryptjs');
@@ -15,7 +15,7 @@ const Client = sequelize.define('Client', {
   email: {
     type: DataTypes.STRING(100),
     allowNull: false,
-    unique: true,
+    // CORREGIDO: Removido unique: true de aquí
     validate: {
       isEmail: {
         msg: 'Debe ser un email válido'
@@ -31,7 +31,7 @@ const Client = sequelize.define('Client', {
   google_id: {
     type: DataTypes.STRING(100),
     allowNull: true,
-    unique: true,
+    // CORREGIDO: Removido unique: true de aquí
     comment: 'ID único de Google OAuth'
   },
   first_name: {
@@ -193,6 +193,7 @@ const Client = sequelize.define('Client', {
   timestamps: true,
   paranoid: true, // Soft delete
   indexes: [
+    // CORREGIDO: Movido unique constraints a indexes
     {
       unique: true,
       fields: ['email']
@@ -302,9 +303,8 @@ Client.prototype.addPoints = async function(points, reason = 'Check-in') {
   await this.save();
   
   // Crear registro en PointsTransaction
-  const PointsTransaction = sequelize.models.PointsTransaction;
-  if (PointsTransaction) {
-    await PointsTransaction.create({
+  if (sequelize.models.PointsTransaction) {
+    await sequelize.models.PointsTransaction.create({
       client_id: this.id,
       points_earned: points,
       transaction_type: 'earned',
@@ -336,7 +336,7 @@ Client.findByGoogleId = function(googleId) {
   });
 };
 
-// Definir asociaciones - CORREGIDAS
+// CORREGIDO: Asociaciones protegidas con verificación de existencia
 Client.associate = function(models) {
   // Un cliente tiene una imagen de perfil
   if (models.Image) {

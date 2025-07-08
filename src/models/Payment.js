@@ -1,5 +1,5 @@
 // Archivo: src/models/Payment.js
-// creo el modelo para registrar todos los pagos del sistema
+// Modelo CORREGIDO para registrar todos los pagos del sistema
 
 const { DataTypes } = require('sequelize');
 const { sequelize } = require('../config/database');
@@ -90,17 +90,15 @@ const Payment = sequelize.define('Payment', {
     defaultValue: 'pending',
     comment: 'Estado del pago'
   },
-  // Información específica de Stripe
+  // Información específica de Stripe - CORREGIDO: Removido unique de aquí
   stripe_payment_intent_id: {
     type: DataTypes.STRING(255),
     allowNull: true,
-    unique: true,
     comment: 'ID del Payment Intent de Stripe'
   },
   stripe_charge_id: {
     type: DataTypes.STRING(255),
     allowNull: true,
-    unique: true,
     comment: 'ID del Charge de Stripe'
   },
   stripe_customer_id: {
@@ -139,7 +137,7 @@ const Payment = sequelize.define('Payment', {
   reference_number: {
     type: DataTypes.STRING(100),
     allowNull: true,
-    unique: true,
+    // CORREGIDO: Removido unique de aquí
     comment: 'Número de referencia único del pago'
   },
   // Información de procesamiento
@@ -201,7 +199,7 @@ const Payment = sequelize.define('Payment', {
   invoice_number: {
     type: DataTypes.STRING(50),
     allowNull: true,
-    unique: true,
+    // CORREGIDO: Removido unique de aquí
     comment: 'Número de factura/recibo generado'
   },
   // Metadatos
@@ -260,6 +258,7 @@ const Payment = sequelize.define('Payment', {
     {
       fields: ['due_date']
     },
+    // CORREGIDO: Movido unique constraints a indexes
     {
       unique: true,
       fields: ['reference_number'],
@@ -274,6 +273,15 @@ const Payment = sequelize.define('Payment', {
       fields: ['stripe_payment_intent_id'],
       where: {
         stripe_payment_intent_id: {
+          [sequelize.Sequelize.Op.ne]: null
+        }
+      }
+    },
+    {
+      unique: true,
+      fields: ['stripe_charge_id'],
+      where: {
+        stripe_charge_id: {
           [sequelize.Sequelize.Op.ne]: null
         }
       }
@@ -324,7 +332,7 @@ Payment.prototype.markAsCompleted = async function(processedByUserId = null, not
   this.processed_by_user_id = processedByUserId;
   
   // Actualizar la membresía o orden relacionada
-  if (this.membership_id) {
+  if (this.membership_id && sequelize.models.ClientMembership) {
     const membership = await sequelize.models.ClientMembership.findByPk(this.membership_id);
     if (membership) {
       membership.amount_paid += parseFloat(this.amount);
@@ -336,7 +344,7 @@ Payment.prototype.markAsCompleted = async function(processedByUserId = null, not
     }
   }
   
-  if (this.order_id) {
+  if (this.order_id && sequelize.models.Order) {
     const order = await sequelize.models.Order.findByPk(this.order_id);
     if (order) {
       order.payment_status = 'paid';
@@ -394,7 +402,8 @@ Payment.findPending = function() {
     include: [
       {
         model: sequelize.models.Client,
-        as: 'client'
+        as: 'client',
+        required: false
       }
     ],
     order: [['due_date', 'ASC']]
@@ -429,60 +438,76 @@ Payment.getFinancialReport = async function(startDate, endDate, paymentMethod = 
   return payments;
 };
 
-// Definir asociaciones
+// CORREGIDO: Asociaciones protegidas con verificación de existencia
 Payment.associate = function(models) {
   // Un pago pertenece a un cliente
-  Payment.belongsTo(models.Client, {
-    foreignKey: 'client_id',
-    as: 'client',
-    onDelete: 'CASCADE'
-  });
+  if (models.Client) {
+    Payment.belongsTo(models.Client, {
+      foreignKey: 'client_id',
+      as: 'client',
+      onDelete: 'CASCADE'
+    });
+  }
   
   // Un pago puede estar relacionado con una membresía
-  Payment.belongsTo(models.ClientMembership, {
-    foreignKey: 'membership_id',
-    as: 'membership',
-    onDelete: 'SET NULL'
-  });
+  if (models.ClientMembership) {
+    Payment.belongsTo(models.ClientMembership, {
+      foreignKey: 'membership_id',
+      as: 'membership',
+      onDelete: 'SET NULL'
+    });
+  }
   
   // Un pago puede estar relacionado con un tipo de membresía
-  Payment.belongsTo(models.MembershipType, {
-    foreignKey: 'membership_type_id',
-    as: 'membershipType',
-    onDelete: 'SET NULL'
-  });
+  if (models.MembershipType) {
+    Payment.belongsTo(models.MembershipType, {
+      foreignKey: 'membership_type_id',
+      as: 'membershipType',
+      onDelete: 'SET NULL'
+    });
+  }
   
   // Un pago puede estar relacionado con una orden
-  Payment.belongsTo(models.Order, {
-    foreignKey: 'order_id',
-    as: 'order',
-    onDelete: 'SET NULL'
-  });
+  if (models.Order) {
+    Payment.belongsTo(models.Order, {
+      foreignKey: 'order_id',
+      as: 'order',
+      onDelete: 'SET NULL'
+    });
+  }
   
   // Un pago puede tener una transferencia bancaria asociada
-  Payment.belongsTo(models.BankTransfer, {
-    foreignKey: 'bank_transfer_id',
-    as: 'bankTransfer',
-    onDelete: 'SET NULL'
-  });
+  if (models.BankTransfer) {
+    Payment.belongsTo(models.BankTransfer, {
+      foreignKey: 'bank_transfer_id',
+      as: 'bankTransfer',
+      onDelete: 'SET NULL'
+    });
+  }
   
   // Un pago fue procesado por un usuario
-  Payment.belongsTo(models.User, {
-    foreignKey: 'processed_by_user_id',
-    as: 'processedBy'
-  });
+  if (models.User) {
+    Payment.belongsTo(models.User, {
+      foreignKey: 'processed_by_user_id',
+      as: 'processedBy'
+    });
+  }
   
   // Un pago fue reembolsado por un usuario
-  Payment.belongsTo(models.User, {
-    foreignKey: 'refunded_by_user_id',
-    as: 'refundedBy'
-  });
+  if (models.User) {
+    Payment.belongsTo(models.User, {
+      foreignKey: 'refunded_by_user_id',
+      as: 'refundedBy'
+    });
+  }
   
   // Un pago fue reconciliado por un usuario
-  Payment.belongsTo(models.User, {
-    foreignKey: 'reconciled_by_user_id',
-    as: 'reconciledBy'
-  });
+  if (models.User) {
+    Payment.belongsTo(models.User, {
+      foreignKey: 'reconciled_by_user_id',
+      as: 'reconciledBy'
+    });
+  }
 };
 
 module.exports = Payment;

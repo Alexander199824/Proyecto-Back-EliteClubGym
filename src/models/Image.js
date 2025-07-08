@@ -85,7 +85,7 @@ const Image = sequelize.define('Image', {
   file_hash: {
     type: DataTypes.STRING(64),
     allowNull: false,
-    unique: true,
+    // CORREGIDO: Removido unique: true de aquí
     comment: 'Hash SHA-256 del archivo para evitar duplicados'
   },
   // Información de uso
@@ -215,6 +215,7 @@ const Image = sequelize.define('Image', {
   timestamps: true,
   paranoid: true, // Soft delete
   indexes: [
+    // CORREGIDO: Movido unique constraint a indexes
     {
       unique: true,
       fields: ['file_hash']
@@ -399,77 +400,7 @@ Image.createFromBase64 = async function(base64Data, options = {}) {
   return image;
 };
 
-// Método de clase para limpiar imágenes huérfanas
-Image.cleanupOrphaned = async function() {
-  // Buscar imágenes que no están referenciadas en ninguna parte
-  const orphanedImages = await this.findAll({
-    where: {
-      is_active: true,
-      // Agregar condiciones para verificar referencias
-      id: {
-        [sequelize.Sequelize.Op.notIn]: sequelize.literal(`(
-          SELECT profile_image_id FROM users WHERE profile_image_id IS NOT NULL
-          UNION
-          SELECT profile_image_id FROM clients WHERE profile_image_id IS NOT NULL
-          UNION
-          SELECT image_id FROM product_categories WHERE image_id IS NOT NULL
-          UNION
-          SELECT image_id FROM prizes WHERE image_id IS NOT NULL
-          UNION
-          SELECT receipt_image_id FROM bank_transfers WHERE receipt_image_id IS NOT NULL
-        )`)
-      }
-    }
-  });
-  
-  // Marcar como inactivas (soft delete)
-  for (const image of orphanedImages) {
-    image.is_active = false;
-    await image.save();
-  }
-  
-  return orphanedImages.length;
-};
-
-// Método de clase para estadísticas de almacenamiento
-Image.getStorageStats = async function() {
-  const stats = await this.findAll({
-    where: { is_active: true },
-    attributes: [
-      'usage_type',
-      [sequelize.fn('COUNT', sequelize.col('id')), 'count'],
-      [sequelize.fn('SUM', sequelize.col('file_size')), 'total_size'],
-      [sequelize.fn('AVG', sequelize.col('file_size')), 'avg_size'],
-      [sequelize.fn('MAX', sequelize.col('file_size')), 'max_size'],
-      [sequelize.fn('MIN', sequelize.col('file_size')), 'min_size']
-    ],
-    group: ['usage_type'],
-    raw: true
-  });
-  
-  return stats;
-};
-
-// Método de clase para buscar imágenes por tipo de uso
-Image.findByUsageType = function(usageType, options = {}) {
-  const whereClause = {
-    usage_type: usageType,
-    is_active: true
-  };
-  
-  if (options.is_public !== undefined) {
-    whereClause.is_public = options.is_public;
-  }
-  
-  return this.findAll({
-    where: whereClause,
-    order: options.order || [['created_at', 'DESC']],
-    limit: options.limit,
-    offset: options.offset
-  });
-};
-
-// Definir asociaciones
+// CORREGIDO: Asociaciones protegidas con verificación de existencia
 Image.associate = function(models) {
   // Una imagen puede ser subida por un usuario
   if (models.User) {
