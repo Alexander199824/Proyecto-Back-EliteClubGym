@@ -1,5 +1,5 @@
-// src/config/database.js - VERSIÓN CORREGIDA
-// Configuración corregida para evitar problemas de ENUM
+// src/config/database.js - VERSIÓN CORREGIDA PARA POSTGRES
+// Configuración corregida para evitar problemas de ENUM y orden de creación
 
 const { Sequelize } = require('sequelize');
 const fs = require('fs');
@@ -88,7 +88,7 @@ async function connectDB() {
   }
 }
 
-// Función mejorada para recrear tablas sin problemas de ENUM
+// Función mejorada para recrear tablas sin problemas de ENUM - CORREGIDA
 async function recreateTablesIfRequested() {
   try {
     const shouldRecreate = process.env.RECREATE_TABLES === 'true';
@@ -105,9 +105,15 @@ async function recreateTablesIfRequested() {
       console.log('📂 Cargando modelos de la base de datos...');
       await importAllModels();
       
-      // Paso 3: Recrear todas las tablas con force: true
-      console.log('🏗️  Recreando todas las tablas con nueva estructura...');
-      await sequelize.sync({ force: true });
+      // Paso 3: Crear tablas desde cero con force: true
+      console.log('🏗️  Recreando todas las tablas desde cero...');
+      await sequelize.sync({ 
+        force: true,        // Elimina y recrea las tablas
+        alter: false,       // No intentar ALTER TABLE
+        hooks: false,       // Desactivar hooks durante la creación inicial
+        logging: false      // Reducir noise en logs
+      });
+      
       console.log('✅ Todas las tablas recreadas correctamente');
       
       // Paso 4: Ejecutar seeders si están habilitados
@@ -125,95 +131,160 @@ async function recreateTablesIfRequested() {
       console.log('🎉 Migración manual completada exitosamente');
       
     } else {
-      console.log('✅ RECREATE_TABLES=false. Sincronización normal de modelos...');
+      console.log('✅ RECREATE_TABLES=false. Sincronización segura...');
       await importAllModels();
-      // Usar alter: false para evitar problemas de ENUM
-      await sequelize.sync({ alter: false });
+      
+      // Usar sync sin alter para evitar problemas de SQL
+      await sequelize.sync({ 
+        alter: false,       // NUNCA usar alter en PostgreSQL con ENUMs
+        force: false,       // No forzar recreación
+        logging: false      // Reducir noise
+      });
       console.log('✅ Base de datos sincronizada correctamente');
     }
     
   } catch (error) {
     console.error('❌ Error durante la migración de tablas:', error);
+    
+    // Si hay error y estamos recreando, intentar limpieza adicional
+    if (process.env.RECREATE_TABLES === 'true') {
+      console.log('🔧 Intentando limpieza adicional debido al error...');
+      try {
+        await cleanDatabase();
+        console.log('✅ Limpieza adicional completada');
+      } catch (cleanError) {
+        console.error('❌ Error en limpieza adicional:', cleanError.message);
+      }
+    }
+    
     throw error;
   }
 }
 
-// Función para limpiar la base de datos completamente
+// Función para limpiar la base de datos completamente - MEJORADA
 async function cleanDatabase() {
   try {
-    // Eliminar todas las tablas en orden correcto
-    const dropTablesQuery = `
-      DROP TABLE IF EXISTS 
-        prize_winnings,
-        roulettes,
-        qr_codes,
-        products,
-        product_categories,
-        points_transactions,
-        payments,
-        order_items,
-        orders,
-        bank_transfers,
-        notifications,
-        client_checkins,
-        client_preferences,
-        client_memberships,
-        membership_types,
-        images,
-        clients,
-        users
-      CASCADE;
-    `;
+    console.log('🗑️  Iniciando limpieza completa...');
     
-    await sequelize.query(dropTablesQuery);
+    // Paso 1: Terminar todas las conexiones activas (excepto la nuestra)
+    try {
+      await sequelize.query(`
+        SELECT pg_terminate_backend(pid)
+        FROM pg_stat_activity
+        WHERE datname = current_database() AND pid <> pg_backend_pid()
+      `);
+      console.log('✅ Conexiones activas terminadas');
+    } catch (error) {
+      // Ignorar errores de permisos aquí
+      console.log('⚠️  No se pudieron terminar conexiones activas (normal en algunos entornos)');
+    }
     
-    // Eliminar todos los tipos ENUM
-    const dropEnumsQuery = `
-      DROP TYPE IF EXISTS 
-        "public"."enum_users_role",
-        "public"."enum_clients_gender",
-        "public"."enum_clients_preferred_workout_time",
-        "public"."enum_membership_types_currency",
-        "public"."enum_client_memberships_status",
-        "public"."enum_client_memberships_payment_status",
-        "public"."enum_images_usage_type",
-        "public"."enum_notifications_type",
-        "public"."enum_notifications_priority",
-        "public"."enum_notifications_status",
-        "public"."enum_notifications_related_type",
-        "public"."enum_client_checkins_checkin_type",
-        "public"."enum_client_checkins_location_validation_method",
-        "public"."enum_client_checkins_status",
-        "public"."enum_client_checkins_workout_type",
-        "public"."enum_client_checkins_platform",
-        "public"."enum_orders_status",
-        "public"."enum_orders_payment_status",
-        "public"."enum_orders_delivery_mode",
-        "public"."enum_order_items_item_status",
-        "public"."enum_order_items_delivery_mode",
-        "public"."enum_payments_payment_type",
-        "public"."enum_payments_payment_method",
-        "public"."enum_payments_status",
-        "public"."enum_points_transactions_transaction_type",
-        "public"."enum_points_transactions_source_type",
-        "public"."enum_prizes_type",
-        "public"."enum_prizes_category",
-        "public"."enum_prize_winnings_prize_type",
-        "public"."enum_prize_winnings_status",
-        "public"."enum_products_qr_prize_category",
-        "public"."enum_qr_codes_code_type",
-        "public"."enum_qr_codes_prize_category",
-        "public"."enum_roulettes_category",
-        "public"."enum_bank_transfers_verification_status"
-      CASCADE;
-    `;
+    // Paso 2: Obtener todas las tablas dinámicamente y eliminarlas
+    try {
+      const [tables] = await sequelize.query(`
+        SELECT tablename FROM pg_tables 
+        WHERE schemaname = 'public' 
+        AND tablename NOT LIKE 'pg_%' 
+        AND tablename NOT LIKE 'sql_%'
+        ORDER BY tablename
+      `);
+      
+      if (tables.length > 0) {
+        console.log(`🗑️  Eliminando ${tables.length} tablas...`);
+        
+        // Eliminar tablas una por una con CASCADE para mejor control
+        for (const table of tables) {
+          try {
+            await sequelize.query(`DROP TABLE IF EXISTS "${table.tablename}" CASCADE`);
+            console.log(`   ✅ Tabla "${table.tablename}" eliminada`);
+          } catch (error) {
+            console.log(`   ⚠️  Error eliminando tabla "${table.tablename}": ${error.message}`);
+          }
+        }
+      } else {
+        console.log('📋 No se encontraron tablas para eliminar');
+      }
+    } catch (error) {
+      console.error('⚠️  Error obteniendo lista de tablas:', error.message);
+    }
     
-    await sequelize.query(dropEnumsQuery);
-    console.log('✅ Base de datos limpiada completamente');
+    // Paso 3: Obtener y eliminar todos los tipos ENUM dinámicamente
+    try {
+      const [enums] = await sequelize.query(`
+        SELECT t.typname
+        FROM pg_type t 
+        LEFT JOIN pg_catalog.pg_namespace n ON n.oid = t.typnamespace 
+        WHERE t.typtype = 'e'
+        AND n.nspname = 'public'
+        ORDER BY t.typname
+      `);
+      
+      if (enums.length > 0) {
+        console.log(`🗑️  Eliminando ${enums.length} tipos ENUM...`);
+        for (const enumType of enums) {
+          try {
+            await sequelize.query(`DROP TYPE IF EXISTS "public"."${enumType.typname}" CASCADE`);
+            console.log(`   ✅ ENUM "${enumType.typname}" eliminado`);
+          } catch (error) {
+            console.log(`   ⚠️  Error eliminando ENUM "${enumType.typname}": ${error.message}`);
+          }
+        }
+      } else {
+        console.log('📋 No se encontraron tipos ENUM para eliminar');
+      }
+    } catch (error) {
+      console.error('⚠️  Error obteniendo tipos ENUM:', error.message);
+    }
+    
+    // Paso 4: Limpiar secuencias huérfanas
+    try {
+      const [sequences] = await sequelize.query(`
+        SELECT schemaname, sequencename 
+        FROM pg_sequences 
+        WHERE schemaname = 'public'
+      `);
+      
+      if (sequences.length > 0) {
+        console.log(`🗑️  Eliminando ${sequences.length} secuencias...`);
+        for (const sequence of sequences) {
+          try {
+            await sequelize.query(`DROP SEQUENCE IF EXISTS "public"."${sequence.sequencename}" CASCADE`);
+            console.log(`   ✅ Secuencia "${sequence.sequencename}" eliminada`);
+          } catch (error) {
+            console.log(`   ⚠️  Error eliminando secuencia "${sequence.sequencename}": ${error.message}`);
+          }
+        }
+      }
+    } catch (error) {
+      console.log('⚠️  Error procesando secuencias:', error.message);
+    }
+    
+    // Paso 5: Verificación final
+    try {
+      const [finalTables] = await sequelize.query(`
+        SELECT COUNT(*) as count FROM pg_tables WHERE schemaname = 'public'
+      `);
+      const [finalEnums] = await sequelize.query(`
+        SELECT COUNT(*) as count FROM pg_type WHERE typtype = 'e' 
+        AND typnamespace = (SELECT oid FROM pg_namespace WHERE nspname = 'public')
+      `);
+      
+      console.log(`📊 Verificación final:`);
+      console.log(`   - Tablas restantes: ${finalTables[0].count}`);
+      console.log(`   - ENUMs restantes: ${finalEnums[0].count}`);
+      
+      if (finalTables[0].count === 0 && finalEnums[0].count === 0) {
+        console.log('✅ Base de datos limpiada completamente');
+      } else {
+        console.log('⚠️  Algunos elementos no pudieron ser eliminados completamente');
+      }
+    } catch (error) {
+      console.log('⚠️  Error en verificación final:', error.message);
+    }
     
   } catch (error) {
-    console.error('⚠️  Error limpiando base de datos:', error.message);
-    // Continuar sin error, puede que algunas tablas no existan
+    console.error('❌ Error en limpieza de base de datos:', error.message);
+    throw error;
   }
 }
 
@@ -245,7 +316,8 @@ async function importAllModels() {
   for (const file of modelFiles) {
     try {
       const modelPath = path.join(modelsPath, file);
-      delete require.cache[require.resolve(modelPath)]; // Limpiar cache
+      // Limpiar cache para evitar problemas de importación
+      delete require.cache[require.resolve(modelPath)];
       require(modelPath);
       console.log(`✅ Modelo ${file} importado correctamente`);
     } catch (error) {
@@ -262,14 +334,16 @@ async function importAllModels() {
     throw new Error('No se pudieron importar modelos. Verifica la estructura de los archivos.');
   }
   
-  // Paso 2: Establecer asociaciones solo si todos los modelos están cargados
+  // Paso 2: Establecer asociaciones de manera segura
   console.log('🔗 Estableciendo asociaciones entre modelos...');
   const associationErrors = [];
   
+  // Primero hacer todas las asociaciones belongsTo y hasOne
   Object.keys(sequelize.models).forEach(modelName => {
     const model = sequelize.models[modelName];
     if (typeof model.associate === 'function') {
       try {
+        // Llamar associate pero capturar errores
         model.associate(sequelize.models);
         console.log(`✅ Asociaciones establecidas para ${modelName}`);
       } catch (error) {
@@ -279,17 +353,19 @@ async function importAllModels() {
     }
   });
   
-  // Reportar errores si los hay
+  // Reportar errores si los hay pero continuar
   if (importErrors.length > 0) {
-    console.warn('⚠️  Errores de importación:', importErrors);
+    console.warn('⚠️  Errores de importación encontrados:');
+    importErrors.forEach(err => console.warn(`   ${err.file}: ${err.error}`));
   }
   
   if (associationErrors.length > 0) {
-    console.warn('⚠️  Errores de asociación:', associationErrors);
+    console.warn('⚠️  Errores de asociación encontrados:');
+    associationErrors.forEach(err => console.warn(`   ${err.modelName}: ${err.error}`));
     // No lanzar error aquí, solo advertir
   }
   
-  console.log('✅ Asociaciones entre modelos establecidas correctamente');
+  console.log('✅ Importación de modelos completada');
 }
 
 // Función para ejecutar seeders de desarrollo
