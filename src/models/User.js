@@ -202,7 +202,7 @@ User.findActiveByEmail = function(email) {
   });
 };
 
-// Definir asociaciones
+// Definir asociaciones - CORREGIDAS
 User.associate = function(models) {
   // Un usuario puede tener una imagen de perfil
   User.belongsTo(models.Image, {
@@ -211,16 +211,94 @@ User.associate = function(models) {
     onDelete: 'SET NULL'
   });
   
-  // Un usuario puede hacer muchas verificaciones de transferencias
-  User.hasMany(models.PaymentVerification, {
-    foreignKey: 'verified_by_user_id',
-    as: 'verifiedTransfers'
-  });
-  
   // Un usuario puede crear muchas notificaciones
   User.hasMany(models.Notification, {
     foreignKey: 'created_by_user_id',
     as: 'createdNotifications'
+  });
+  
+  // Un usuario puede procesar muchas transferencias bancarias
+  User.hasMany(models.BankTransfer, {
+    foreignKey: 'verified_by_user_id',
+    as: 'verifiedBankTransfers'
+  });
+  
+  // Un usuario puede crear muchas membresías
+  User.hasMany(models.ClientMembership, {
+    foreignKey: 'created_by_user_id',
+    as: 'createdMemberships'
+  });
+  
+  // Un usuario puede procesar muchos pagos
+  User.hasMany(models.Payment, {
+    foreignKey: 'processed_by_user_id',
+    as: 'processedPayments'
+  });
+  
+  // Un usuario puede procesar reembolsos
+  User.hasMany(models.Payment, {
+    foreignKey: 'refunded_by_user_id',
+    as: 'refundedPayments'
+  });
+  
+  // Un usuario puede reconciliar pagos
+  User.hasMany(models.Payment, {
+    foreignKey: 'reconciled_by_user_id',
+    as: 'reconciledPayments'
+  });
+  
+  // Un usuario puede procesar transacciones de puntos
+  User.hasMany(models.PointsTransaction, {
+    foreignKey: 'processed_by_user_id',
+    as: 'processedPointsTransactions'
+  });
+  
+  // Un usuario puede procesar premios ganados
+  User.hasMany(models.PrizeWinning, {
+    foreignKey: 'processed_by_user_id',
+    as: 'processedPrizeWinnings'
+  });
+  
+  // Un usuario puede verificar premios ganados
+  User.hasMany(models.PrizeWinning, {
+    foreignKey: 'verified_by_user_id',
+    as: 'verifiedPrizeWinnings'
+  });
+  
+  // Un usuario puede cancelar premios ganados
+  User.hasMany(models.PrizeWinning, {
+    foreignKey: 'cancelled_by_user_id',
+    as: 'cancelledPrizeWinnings'
+  });
+  
+  // Un usuario puede crear premios
+  User.hasMany(models.Prize, {
+    foreignKey: 'created_by_user_id',
+    as: 'createdPrizes'
+  });
+  
+  // Un usuario puede crear códigos QR
+  User.hasMany(models.QRCode, {
+    foreignKey: 'created_by_user_id',
+    as: 'createdQRCodes'
+  });
+  
+  // Un usuario puede crear ruletas
+  User.hasMany(models.Roulette, {
+    foreignKey: 'created_by_user_id',
+    as: 'createdRoulettes'
+  });
+  
+  // Un usuario puede procesar órdenes
+  User.hasMany(models.Order, {
+    foreignKey: 'processed_by_user_id',
+    as: 'processedOrders'
+  });
+  
+  // Un usuario puede validar check-ins
+  User.hasMany(models.ClientCheckin, {
+    foreignKey: 'validated_by_user_id',
+    as: 'validatedCheckins'
   });
 };
 

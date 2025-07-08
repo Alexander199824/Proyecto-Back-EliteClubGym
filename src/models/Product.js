@@ -467,7 +467,7 @@ Product.prototype.getProfitMargin = function() {
   return ((profit / parseFloat(this.price)) * 100).toFixed(2);
 };
 
-// Método de instancia para actualizar stock
+// Método de instancia para actualizar stock - CORREGIDO
 Product.prototype.updateStock = async function(quantity, operation = 'subtract', reason = 'Venta') {
   if (!this.track_inventory) return;
 
@@ -486,18 +486,8 @@ Product.prototype.updateStock = async function(quantity, operation = 'subtract',
 
   await this.save();
 
-  // Registrar movimiento de inventario
-  const InventoryMovement = sequelize.models.InventoryMovement;
-  if (InventoryMovement) {
-    await InventoryMovement.create({
-      product_id: this.id,
-      movement_type: operation === 'add' ? 'in' : 'out',
-      quantity: quantity,
-      previous_quantity: oldQuantity,
-      new_quantity: this.stock_quantity,
-      reason: reason
-    });
-  }
+  // Log simple para tracking de inventario
+  console.log(`Stock actualizado para producto ${this.sku}: ${oldQuantity} -> ${this.stock_quantity} (${operation} ${quantity}): ${reason}`);
 
   return this.stock_quantity;
 };
@@ -593,7 +583,7 @@ Product.findLowStock = function() {
   });
 };
 
-// Definir asociaciones
+// Definir asociaciones - CORREGIDAS
 Product.associate = function(models) {
   // Un producto pertenece a una categoría
   Product.belongsTo(models.ProductCategory, {
@@ -620,10 +610,10 @@ Product.associate = function(models) {
     as: 'qrCodes'
   });
 
-  // Un producto puede tener movimientos de inventario
-  Product.hasMany(models.InventoryMovement, {
-    foreignKey: 'product_id',
-    as: 'inventoryMovements'
+  // Un producto puede ser premio gratuito
+  Product.hasMany(models.Prize, {
+    foreignKey: 'free_product_id',
+    as: 'prizesAsFreeProduct'
   });
 };
 
